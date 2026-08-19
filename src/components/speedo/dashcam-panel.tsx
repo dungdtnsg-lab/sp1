@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { History, SwitchCamera, Video, X } from "lucide-react";
 import { persistClip, pickRecorderMime, shareExisting, type SavedClip } from "@/lib/speedo/dashcam-save";
+import { attachVideo, facingOf, openCam } from "@/lib/speedo/camera";
 import { formatClock, unitLabel, convertSpeed } from "@/lib/speedo/helpers";
 import { useSpeedo } from "@/lib/speedo/store";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export function DashcamPanel() {
   const [clips, setClips] = useState<SavedClip[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [stamp, setStamp] = useState("");
+  const [liveCam, setLiveCam] = useState("");
   const speed = useSpeedo((s) => s.currentSpeedKmh);
   const unit = useSpeedo((s) => s.unit);
   const fix = useSpeedo((s) => s.lastFix);
@@ -43,31 +45,40 @@ export function DashcamPanel() {
     let dead = false;
     void (async () => {
       stopStreams();
+      await attachVideo(rearRef.current, null);
+      await attachVideo(frontRef.current, null);
       const { w, h } = RES[res];
-      const wantRear = mode !== "front";
-      const wantFront = mode !== "rear";
       try {
-        if (wantRear) {
-          const stream = await openCam("environment", w, h, true);
+        if (mode === "front") {
+          const stream = await openCam("user", w, h, true);
           if (dead) return stream.getTracks().forEach((t) => t.stop());
-          rearStream.current = stream;
-          if (rearRef.current) {
-            rearRef.current.srcObject = stream;
-            await rearRef.current.play().catch(() => undefined);
+          frontStream.current = stream;
+          await attachVideo(frontRef.current, stream);
+          setLiveCam(labelFor(stream, "trước"));
+        } else {
+          const rear = await openCam("environment", w, h, true);
+          if (dead) return rear.getTracks().forEach((t) => t.stop());
+          rearStream.current = rear;
+          await attachVideo(rearRef.current, rear);
+          setLiveCam(labelFor(rear, "sau"));
+          if (facingOf(rear) === "user") {
+            setErr("Máy đang mở cam trước. Bấm Cam sau lần nữa, hoặc tắt app Camera khác.");
           }
-        }
-        if (wantFront) {
-          try {
-            const stream = await openCam("user", Math.min(w, 1280), Math.min(h, 720), mode === "front");
-            if (dead) return stream.getTracks().forEach((t) => t.stop());
-            frontStream.current = stream;
-            if (frontRef.current) {
-              frontRef.current.srcObject = stream;
-              await frontRef.current.play().catch(() => undefined);
+
+          if (mode === "dual") {
+            try {
+              const front = await openCam("user", Math.min(w, 960), Math.min(h, 540), false);
+              if (dead) return front.getTracks().forEach((t) => t.stop());
+              if (rear.getVideoTracks().some((t) => t.readyState !== "live")) {
+                front.getTracks().forEach((t) => t.stop());
+                setErr("iPhone chỉ cho 1 camera lúc này — đang giữ cam sau.");
+              } else {
+                frontStream.current = front;
+                await attachVideo(frontRef.current, front);
+              }
+            } catch {
+              setErr("Không mở được cam trước song song. Đang ghi cam sau.");
             }
-          } catch {
-            if (mode === "dual") setErr("iPhone đang giữ cam sau. Cam trước không mở song song được — ghi cam sau.");
-            else throw new Error("Không mở được camera trước.");
           }
         }
         if (mode !== "dual") setErr("");
@@ -165,8 +176,6 @@ export function DashcamPanel() {
     else setErr("Không có dữ liệu video. Thử lại, hoặc hạ độ phân giải.");
   }
 
-  const showRear = mode !== "front";
-
   return (
     <div className="fixed inset-0 z-40 flex flex-col bg-black text-fg">
       <header className="island-pad flex shrink-0 items-center justify-between px-3 pb-2">
@@ -215,21 +224,25 @@ export function DashcamPanel() {
       </div>
 
       <div className="relative min-h-0 flex-1 bg-black">
-        {showRear && (
-          <video ref={rearRef} className="h-full w-full object-cover" playsInline muted autoPlay />
-        )}
-        {mode === "front" && (
-          <video ref={frontRef} className="h-full w-full object-cover" playsInline muted autoPlay />
-        )}
-        {mode === "dual" && (
-          <video
-            ref={frontRef}
-            className="absolute top-3 right-3 z-10 h-36 w-24 rounded-lg border-2 border-white/70 object-cover"
-            playsInline
-            muted
-            autoPlay
-          />
-        )}
+        <video
+          ref={rearRef}
+          className={cn("h-full w-full object-cover", mode === "front" && "hidden")}
+          playsInline
+          muted
+          autoPlay
+        />
+        <video
+          ref={frontRef}
+          className={cn(
+            "object-cover",
+            mode === "front" && "h-full w-full",
+            mode === "dual" && "absolute top-3 right-3 z-10 h-36 w-24 rounded-lg border-2 border-white/70",
+            mode === "rear" && "hidden",
+          )}
+          playsInline
+          muted
+          autoPlay
+        />
         <div className="pointer-events-none absolute top-3 left-4 font-mono text-[14px] leading-relaxed text-white drop-shadow-[0_1px_4px_#000]">
           <div>
             {new Date().toLocaleDateString("en-GB").replace(/\//g, "-")}, {stamp}
@@ -238,6 +251,7 @@ export function DashcamPanel() {
             Speed - {convertSpeed(speed, unit).toFixed(0)} {unitLabel(unit).toUpperCase()}
           </div>
           <div>{fix ? `${fix.lat.toFixed(6)}  ${fix.lon.toFixed(6)}` : "—  —"}</div>
+          <div className="font-bold text-cyan">{liveCam || (mode === "front" ? "Cam trước" : "Cam sau")}</div>
           {recording && <div className="mt-1 font-bold text-danger">● REC {res}p</div>}
         </div>
         {err && (
@@ -303,20 +317,8 @@ export function DashcamPanel() {
   );
 }
 
-async function openCam(facing: "environment" | "user", w: number, h: number, audio: boolean) {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      audio,
-      video: {
-        facingMode: { ideal: facing },
-        width: { ideal: w },
-        height: { ideal: h },
-      },
-    });
-  } catch {
-    return navigator.mediaDevices.getUserMedia({
-      audio,
-      video: { facingMode: facing },
-    });
-  }
+function labelFor(stream: MediaStream, fallback: string) {
+  const name = stream.getVideoTracks()[0]?.label;
+  if (name) return name;
+  return fallback === "sau" ? "Cam sau" : "Cam trước";
 }
