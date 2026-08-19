@@ -1,0 +1,15 @@
+node_modules
+.vercel
+.output
+dist
+www
+.DS_Store
+*.log
+screenshots
+artifacts
+.grok
+.nitro
+ios/App/App/public
+ios/App/build
+ios/App/App.xcarchive
+ios/DerivedData
