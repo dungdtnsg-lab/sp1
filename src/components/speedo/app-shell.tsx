@@ -50,10 +50,10 @@ import { SatellitesPanel } from "./satellites-panel";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "track", label: "Current Track", icon: Navigation },
-  { id: "satellites", label: "Satellites", icon: Satellite },
-  { id: "chart", label: "Speed Chart", icon: Activity },
-  { id: "export", label: "Log & Xuất", icon: FileDown },
+  { id: "track", label: "Track", icon: Navigation },
+  { id: "satellites", label: "GNSS", icon: Satellite },
+  { id: "chart", label: "Chart", icon: Activity },
+  { id: "export", label: "Log", icon: FileDown },
   { id: "safety", label: "An toàn", icon: Shield },
 ] as const;
 
@@ -90,7 +90,7 @@ export function SpeedoApp() {
                 useSpeedo.getState().setTab(t.id);
               }}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 border-b-[3px] px-1 py-1.5 text-[10.5px] font-bold",
+                "flex flex-1 flex-col items-center gap-0.5 border-b-[3px] px-1 py-2 text-[11px] font-bold",
                 tab === t.id
                   ? "border-accent text-accent"
                   : "border-transparent text-muted",
@@ -255,55 +255,38 @@ function GaugeCard({ compact }: { compact: boolean }) {
         <GaugeCanvas />
         <div
           className={cn(
-            "pointer-events-none absolute z-[5] flex flex-col items-center gap-0.5",
-            compact ? "top-[18%]" : "top-[52px]",
-          )}
-        >
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                "font-extrabold tracking-wide text-cyan",
-                compact ? "text-[9px]" : "text-[11px]",
-              )}
-            >
-              GNSS GPS
-            </span>
-            <span className="rounded bg-warn/15 px-1 py-px text-[10px] font-bold text-warn">
-              {used}/{sats.length}
-            </span>
-          </div>
-          <div className="flex gap-[3.5px]">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <span
-                key={i}
-                className={cn(
-                  "size-[5.5px] rounded-full",
-                  i < dots ? "bg-warn shadow-[0_0_6px_#f59e0b]" : "bg-border",
-                )}
-              />
-            ))}
-          </div>
-          <div className="mt-0.5 rounded border border-line bg-bg/85 px-2 py-px font-mono text-[10.5px] text-slate-300">
-            {clock}
-          </div>
-        </div>
-        <div
-          className={cn(
-            "pointer-events-none absolute bottom-3 flex min-w-[100px] items-baseline justify-center gap-1 rounded-md border border-border bg-[#080c14] px-2.5 py-0.5",
-            compact && "bottom-2",
+            "pointer-events-none absolute bottom-[18%] flex min-w-[128px] items-baseline justify-center gap-1 rounded-xl bg-black/75 px-3 py-1",
+            compact && "bottom-[16%] px-2 py-0.5",
           )}
         >
           <span
             className={cn(
-              "font-mono leading-none font-black",
-              compact ? "text-[22px]" : "text-[30px]",
-              over ? "text-danger" : "text-fg",
+              "font-mono leading-none font-black tracking-tight",
+              compact ? "text-[28px]" : "text-[40px]",
+              over ? "text-danger" : "text-white",
             )}
           >
-            {convertSpeed(speed, unit).toFixed(1)}
+            {convertSpeed(speed, unit).toFixed(0)}
           </span>
-          <span className="text-[11px] font-bold text-cyan">{unitLabel(unit)}</span>
+          <span className="text-[12px] font-bold text-cyan">{unitLabel(unit)}</span>
         </div>
+      </div>
+      <div className="mt-1 flex w-full items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-black/40 px-2 py-1">
+          <span className="text-[11px] font-extrabold tracking-wide text-cyan">GPS</span>
+          <span className="rounded bg-warn/20 px-1.5 text-[11px] font-bold text-warn">
+            {used}/{sats.length}
+          </span>
+          <div className="flex gap-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <span
+                key={i}
+                className={cn("size-1.5 rounded-full", i < dots ? "bg-warn" : "bg-border")}
+              />
+            ))}
+          </div>
+        </div>
+        <span className="font-mono text-[12px] font-semibold text-slate-200">{clock}</span>
       </div>
 
       <div className="mt-0.5 flex w-full items-center justify-between px-1">
@@ -485,35 +468,35 @@ function StatsView({ duration }: { duration: string; stopDur: string }) {
         <Metric label="Duration (Thời gian)" value={duration} />
         <Metric label="Distance (Quãng đường)" value={`${(distance / 1000).toFixed(3)} KM`} />
       </div>
-      <div className="shrink-0 overflow-hidden rounded-md border border-[#362231] bg-[#1b141b]">
+      <div className="overflow-hidden rounded-xl border border-border bg-panel">
         <Row label="Start Time" value={start} />
         <Row
           label="Max Speed"
-          value={`${convertSpeed(max, unit).toFixed(2)} ${suffix}`}
+          value={`${convertSpeed(max, unit).toFixed(1)} ${suffix}`}
           valueClass="text-danger"
         />
         <Row
           label="Avg Speed"
-          value={`${convertSpeed(avg, unit).toFixed(2)} ${suffix}`}
+          value={`${convertSpeed(avg, unit).toFixed(1)} ${suffix}`}
           valueClass="text-cyan"
         />
-        <Row label="Altitude" value={`${(fix?.altitude ?? 0).toFixed(2)} M`} />
+        <Row label="Altitude" value={`${(fix?.altitude ?? 0).toFixed(1)} M`} />
         <Row
-          label="Heading (Hướng la bàn)"
-          value={`${(fix?.heading ?? 0).toFixed(2)}° ${cardinal(fix?.heading ?? 0)}`}
+          label="Heading"
+          value={`${(fix?.heading ?? 0).toFixed(0)}° ${cardinal(fix?.heading ?? 0)}`}
         />
-        <div className="flex flex-col gap-0.5 px-2.5 py-1.5">
-          <div className="flex items-center justify-between gap-2 text-[13px]">
-            <span className="font-medium text-violet-100">Location (Tọa độ WGS84)</span>
+        <div className="flex flex-col gap-0.5 px-3 py-2">
+          <div className="flex items-center justify-between gap-2 text-[14px]">
+            <span className="font-medium text-slate-300">Tọa độ WGS84</span>
             <button
               type="button"
-              className="text-[10px] font-bold text-cyan"
+              className="text-[12px] font-bold text-cyan"
               onClick={() => void navigator.clipboard?.writeText(loc)}
             >
               Sao chép
             </button>
           </div>
-          <span className="font-mono text-[13px] font-bold tracking-wide text-pink-300">{loc}</span>
+          <span className="font-mono text-[15px] font-bold tracking-wide text-white">{loc}</span>
         </div>
       </div>
     </div>
@@ -522,9 +505,9 @@ function StatsView({ duration }: { duration: string; stopDur: string }) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col rounded-md border border-[#3d2737] bg-[#1c151c] px-2.5 py-1.5">
-      <span className="font-mono text-lg font-extrabold">{value}</span>
-      <span className="text-[10.5px] text-fuchsia-200">{label}</span>
+    <div className="flex flex-col rounded-xl border border-border bg-panel px-3 py-2">
+      <span className="font-mono text-[22px] font-black tracking-tight">{value}</span>
+      <span className="text-[11px] text-muted">{label}</span>
     </div>
   );
 }
@@ -539,9 +522,9 @@ function Row({
   valueClass?: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-[#2a1a26] px-2.5 py-1.5 text-[13px]">
-      <span className="min-w-0 shrink font-medium text-violet-100">{label}</span>
-      <span className={cn("text-right font-bold", valueClass)}>{value}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-line px-3 py-2.5 text-[14px] last:border-0">
+      <span className="min-w-0 shrink text-slate-300">{label}</span>
+      <span className={cn("text-right font-bold text-white", valueClass)}>{value}</span>
     </div>
   );
 }

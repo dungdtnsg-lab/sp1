@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { History, SwitchCamera, Video, X } from "lucide-react";
-import { persistClip, pickRecorderMime, shareExisting, type SavedClip } from "@/lib/speedo/dashcam-save";
+import { persistClip, pickRecorderMime, shareExisting, snapshotHud, startHudRecorder, type SavedClip } from "@/lib/speedo/dashcam-save";
 import { attachVideo, facingOf, openCam } from "@/lib/speedo/camera";
 import { formatClock, unitLabel, convertSpeed } from "@/lib/speedo/helpers";
 import { useSpeedo } from "@/lib/speedo/store";
@@ -21,6 +21,7 @@ export function DashcamPanel() {
   const rearStream = useRef<MediaStream | null>(null);
   const frontStream = useRef<MediaStream | null>(null);
   const recorders = useRef<MediaRecorder[]>([]);
+  const hudStops = useRef<Array<() => void>>([]);
   const chunks = useRef<Record<string, Blob[]>>({ rear: [], front: [] });
   const [mode, setMode] = useState<CamMode>("rear");
   const [res, setRes] = useState<Res>(720);
@@ -108,20 +109,29 @@ export function DashcamPanel() {
       return;
     }
     const mime = pickRecorderMime();
-    const jobs: { key: string; stream: MediaStream }[] = [];
-    if (rearStream.current) jobs.push({ key: "rear", stream: rearStream.current });
-    if (frontStream.current) jobs.push({ key: "front", stream: frontStream.current });
+    const { w, h } = RES[res];
+    const jobs: { key: string; video: HTMLVideoElement | null; stream: MediaStream }[] = [];
+    if (rearStream.current) jobs.push({ key: "rear", video: rearRef.current, stream: rearStream.current });
+    if (frontStream.current) jobs.push({ key: "front", video: frontRef.current, stream: frontStream.current });
     if (!jobs.length) {
       setErr("Chưa có camera.");
       return;
     }
     chunks.current = { rear: [], front: [] };
     recorders.current = [];
+    hudStops.current = [];
     try {
       for (const job of jobs) {
+        const audio = job.stream.getAudioTracks();
+        let recStream = job.stream;
+        if (job.video) {
+          const hud = startHudRecorder(job.video, w, h, audio);
+          hudStops.current.push(hud.stop);
+          if (hud.stream) recStream = hud.stream;
+        }
         const rec = mime
-          ? new MediaRecorder(job.stream, { mimeType: mime, videoBitsPerSecond: res >= 1080 ? 8_000_000 : 4_000_000 })
-          : new MediaRecorder(job.stream);
+          ? new MediaRecorder(recStream, { mimeType: mime, videoBitsPerSecond: res >= 1080 ? 8_000_000 : 4_000_000 })
+          : new MediaRecorder(recStream);
         rec.ondataavailable = (ev) => {
           if (ev.data.size) chunks.current[job.key].push(ev.data);
         };
@@ -138,6 +148,8 @@ export function DashcamPanel() {
   async function stopRec() {
     const recs = recorders.current;
     recorders.current = [];
+    hudStops.current.forEach((s) => s());
+    hudStops.current = [];
     await Promise.all(
       recs.map(
         (rec) =>
@@ -154,6 +166,7 @@ export function DashcamPanel() {
     setRecording(false);
     const stampId = Date.now();
     const next: SavedClip[] = [];
+    const { w, h } = RES[res];
     for (const key of ["rear", "front"] as const) {
       const parts = chunks.current[key];
       if (!parts.length) continue;
@@ -170,7 +183,16 @@ export function DashcamPanel() {
         url,
         blob,
       });
-      await persistClip(blob, name);
+      const videoEl = key === "rear" ? rearRef.current : frontRef.current;
+      try {
+        const photo = videoEl ? await snapshotHud(videoEl, w, h) : null;
+        const vid = await persistClip(blob, name, "video");
+        if (photo) await persistClip(photo, `dashcam-${key}-${stampId}.jpg`, "photo");
+        if (!vid.saved) setErr("Video đã ghi. Mở Share → Lưu Video để đưa vào Ảnh.");
+        else setErr("Đã lưu video + ảnh thông số vào thư viện Ảnh.");
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Ghi xong nhưng chưa vào Ảnh. Bấm lịch sử → Lưu.");
+      }
     }
     if (next.length) setClips((c) => [...next, ...c].slice(0, 16));
     else setErr("Không có dữ liệu video. Thử lại, hoặc hạ độ phân giải.");
@@ -255,7 +277,12 @@ export function DashcamPanel() {
           {recording && <div className="mt-1 font-bold text-danger">● REC {res}p</div>}
         </div>
         {err && (
-          <div className="absolute inset-x-4 bottom-3 rounded-md bg-black/70 px-3 py-2 text-center text-[12px] text-rose-200">
+          <div
+            className={cn(
+              "absolute inset-x-4 bottom-3 rounded-md bg-black/70 px-3 py-2 text-center text-[12px]",
+              err.startsWith("Đã lưu") ? "text-emerald-200" : "text-rose-200",
+            )}
+          >
             {err}
           </div>
         )}

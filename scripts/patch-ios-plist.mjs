@@ -54,6 +54,10 @@ upsert(
   "NSPhotoLibraryAddUsageDescription",
   "<string>Ứng dụng lưu video camera hành trình vào Ảnh.</string>",
 );
+upsert(
+  "NSPhotoLibraryUsageDescription",
+  "<string>Ứng dụng cần quyền Ảnh để lưu video và ảnh thông số hành trình vào thư viện.</string>",
+);
 upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);

@@ -96,6 +96,8 @@
     <string>Ứng dụng cần micro để ghi âm thanh cùng video camera hành trình.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Ứng dụng lưu video camera hành trình vào Ảnh.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Ứng dụng cần quyền Ảnh để lưu video và ảnh thông số hành trình vào thư viện.</string>
     <key>NSMotionUsageDescription</key>
     <string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>
     <key>UIBackgroundModes</key>
