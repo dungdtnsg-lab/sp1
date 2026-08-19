@@ -1,0 +1,54 @@
+name: "1. Bung ZIP lên repo"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bung:
+    name: Unzip và commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tìm file ZIP rồi bung
+        run: |
+          set -euo pipefail
+          ZIP=""
+          for f in ./GPS-Speedometer-github.zip ./*.zip; do
+            if [ -f "$f" ]; then ZIP="$f"; break; fi
+          done
+          if [ -z "${ZIP}" ]; then
+            echo "::error::Không thấy file .zip ở root repo."
+            ls -la
+            exit 1
+          fi
+          echo "Bung ${ZIP}"
+          mkdir -p .unpack
+          unzip -o "${ZIP}" -d .unpack
+          # Không copy workflow — GitHub cấm bot push file .yml
+          if [ -d .unpack/.github/workflows ]; then
+            rm -rf .unpack/.github/workflows
+          fi
+          cp -a .unpack/. .
+          rm -rf .unpack
+          ls -la
+          test -f package.json
+          test -f capacitor.config.ts
+          echo "Bung xong."
+
+      - name: Commit source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git restore --staged .github/workflows 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "Không có file mới"
+            exit 0
+          fi
+          git commit -m "chore: bung GPS-Speedometer zip"
+          git push
