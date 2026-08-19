@@ -81,6 +81,21 @@
   .hud-mirror {
     transform: scaleX(-1);
   }
+
+  .scroll-panel {
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
+  .scroll-panel::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  .scroll-panel::-webkit-scrollbar-thumb {
+    background: #64748b;
+    border-radius: 4px;
+  }
 }
 
 .leaflet-control-attribution {

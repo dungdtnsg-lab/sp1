@@ -101,7 +101,7 @@ export function SpeedoApp() {
             </button>
           ))}
         </nav>
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-1.5">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-1.5">
           <div className={tab === "track" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
             <TrackTab />
           </div>
@@ -370,7 +370,7 @@ function TrackTab() {
   const stopDur = useMemo(() => formatDuration(useSpeedo.getState().stoppedMs()), [nowMs]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
         className={cn(
           "mb-1 shrink-0 rounded-md border px-2 py-1 text-center text-[11px] font-bold",
@@ -415,7 +415,7 @@ function TrackTab() {
           label="Bản đồ"
         />
       </div>
-      <div className={view === "stats" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+      <div className={view === "stats" ? "min-h-0 flex-1 overflow-hidden" : "hidden"}>
         <StatsView duration={duration} stopDur={stopDur} />
       </div>
       <div className={view === "map" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
@@ -463,7 +463,10 @@ function StatsView({ duration }: { duration: string; stopDur: string }) {
   const loc = fix ? `${fix.lat.toFixed(6)}°  ${fix.lon.toFixed(6)}°` : "—";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-2">
+    <div
+      className="scroll-panel min-h-0 flex-1 space-y-1.5 overflow-y-scroll overscroll-y-contain pb-8"
+      style={{ WebkitOverflowScrolling: "touch" }}
+    >
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <Metric label="Duration (Thời gian)" value={duration} />
         <Metric label="Distance (Quãng đường)" value={`${(distance / 1000).toFixed(3)} KM`} />

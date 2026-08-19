@@ -10,11 +10,66 @@ export type SavedClip = {
   blob: Blob;
 };
 
+export async function persistClip(blob: Blob, name: string, kind: "video" | "photo" = "video") {
+  if (!blob || blob.size < 64) {
+    throw new Error("File rỗng — quay ít nhất 3 giây rồi bấm dừng.");
+  }
+  const mime = blob.type || (kind === "photo" ? "image/jpeg" : "video/mp4");
+  const safe = (name || `clip-${Date.now()}`).replace(/[^\w.-]+/g, "_");
+  const data = await blobToBase64(blob);
+  if (!data) throw new Error("Không đọc được dữ liệu video.");
+  const dataUrl = `data:${mime};base64,${data}`;
+
+  try {
+    const { Media } = await import("@capacitor-community/media");
+    if (kind === "photo") await Media.savePhoto({ path: dataUrl });
+    else await Media.saveVideo({ path: dataUrl });
+    return { uri: dataUrl, saved: true };
+  } catch {
+    /* fall through */
+  }
+
+  let uri = "";
+  try {
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const written = await Filesystem.writeFile({
+      path: `speedo/${safe}`,
+      data,
+      directory: Directory.Documents,
+      recursive: true,
+    });
+    uri = written.uri;
+    try {
+      const { Media } = await import("@capacitor-community/media");
+      if (kind === "photo") await Media.savePhoto({ path: uri });
+      else await Media.saveVideo({ path: uri });
+      return { uri, saved: true };
+    } catch {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({ title: safe, files: [uri] });
+      return { uri, saved: true };
+    }
+  } catch {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safe;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return { uri: url, saved: false };
+  }
+}
+
 function blobToBase64(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
-    reader.onerror = reject;
+    reader.onload = () => {
+      const s = String(reader.result || "");
+      const i = s.indexOf(",");
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
 }
@@ -117,48 +172,6 @@ export async function snapshotHud(video: HTMLVideoElement, w: number, h: number)
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob"))), "image/jpeg", 0.92);
   });
   return blob;
-}
-
-export async function persistClip(blob: Blob, name: string, kind: "video" | "photo" = "video") {
-  const { Filesystem, Directory } = await import("@capacitor/filesystem");
-  const data = await blobToBase64(blob);
-  const safe = name.replace(/[^\w.-]+/g, "_");
-  const written = await Filesystem.writeFile({
-    path: safe,
-    data,
-    directory: Directory.Cache,
-  });
-  const uri = written.uri;
-  const dataUrl = `data:${blob.type || (kind === "photo" ? "image/jpeg" : "video/mp4")};base64,${data}`;
-  let saved = false;
-  try {
-    const { Media } = await import("@capacitor-community/media");
-    if (kind === "photo") {
-      await Media.savePhoto({ path: dataUrl });
-    } else {
-      try {
-        await Media.saveVideo({ path: uri });
-      } catch {
-        await Media.saveVideo({ path: dataUrl });
-      }
-    }
-    saved = true;
-  } catch {
-    try {
-      const { Share } = await import("@capacitor/share");
-      await Share.share({ title: safe, files: [uri] });
-      saved = true;
-    } catch {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = safe;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-  }
-  return { uri, saved };
 }
 
 export async function shareExisting(_url: string, name: string, blob: Blob) {
