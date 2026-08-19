@@ -209,7 +209,7 @@ function GaugeCard({ compact }: { compact: boolean }) {
   }, []);
 
   return (
-    <section className="flex shrink-0 flex-col items-center bg-[radial-gradient(circle_at_50%_30%,#151b29_0%,#080a10_100%)] px-3 pt-0.5 pb-1">
+    <section className="island-pad flex shrink-0 flex-col items-center bg-[radial-gradient(circle_at_50%_30%,#151b29_0%,#080a10_100%)] px-3 pb-1">
       <div className="mb-0.5 flex w-full items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <ToolBtn

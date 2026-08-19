@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const plistPath = "ios/App/App/Info.plist";
 if (!existsSync(plistPath)) {
@@ -35,8 +35,9 @@ upsert(
   "<array>\n      <string>location</string>\n      <string>audio</string>\n    </array>",
 );
 upsert("UIViewControllerBasedStatusBarAppearance", "<false/>");
-upsert("UIStatusBarHidden", "<false/>");
+upsert("UIStatusBarHidden", "<true/>");
 upsert("UIStatusBarStyle", "<string>UIStatusBarStyleLightContent</string>");
+upsert("UIRequiresFullScreen", "<true/>");
 upsert(
   "NSCameraUsageDescription",
   "<string>Ứng dụng cần camera để ghi hình camera hành trình ô tô, overlay tốc độ và tọa độ.</string>",
@@ -49,17 +50,13 @@ upsert(
   "NSMotionUsageDescription",
   "<string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>",
 );
+upsert(
+  "NSPhotoLibraryAddUsageDescription",
+  "<string>Ứng dụng lưu video camera hành trình vào Ảnh.</string>",
+);
 upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);
 
-const iconSrc = existsSync("public/icon-192.png") ? "public/icon-192.png" : null;
-if (iconSrc) {
-  const destDir = dirname(plistPath);
-  try {
-    copyFileSync(iconSrc, join(destDir, "public", "icon-192.png"));
-  } catch {
-    /* public folder may not exist yet */
-  }
-}
+spawnSync("python3", ["scripts/sync-ios-icons.py"], { stdio: "inherit" });
 console.log("[ios-plist] patched", plistPath);

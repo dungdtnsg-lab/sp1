@@ -67,9 +67,23 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
     <key>UIStatusBarHidden</key>
-    <false/>
+    <true/>
     <key>UIStatusBarStyle</key>
     <string>UIStatusBarStyleLightContent</string>
+    <key>UIRequiresFullScreen</key>
+    <true/>
+    <key>CFBundleIcons</key>
+    <dict>
+      <key>CFBundlePrimaryIcon</key>
+      <dict>
+        <key>CFBundleIconName</key>
+        <string>AppIcon</string>
+        <key>CFBundleIconFiles</key>
+        <array>
+          <string>AppIcon60x60</string>
+        </array>
+      </dict>
+    </dict>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Ứng dụng cần GPS để đo tốc độ di chuyển và vẽ bản đồ hành trình thời gian thực.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -80,6 +94,8 @@
     <string>Ứng dụng cần camera để ghi hình camera hành trình ô tô, overlay tốc độ và tọa độ.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Ứng dụng cần micro để ghi âm thanh cùng video camera hành trình.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Ứng dụng lưu video camera hành trình vào Ảnh.</string>
     <key>NSMotionUsageDescription</key>
     <string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>
     <key>UIBackgroundModes</key>
