@@ -1,0 +1,51 @@
+name: "2. Build IPA"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    name: Build IPA
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: npm ci + Capacitor
+        run: |
+          set -euo pipefail
+          test -f package.json
+          npm ci
+          npm run build:ios
+          npx cap sync ios
+          node scripts/patch-ios-plist.mjs
+
+      - name: xcodebuild IPA
+        run: |
+          set -euo pipefail
+          cd ios/App
+          xcodebuild \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/App.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+          APP=$(find build/App.xcarchive/Products/Applications -name '*.app' | head -n1)
+          rm -rf Payload GPS-Speedometer.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/App.app
+          zip -r GPS-Speedometer.ipa Payload
+          ls -lh GPS-Speedometer.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GPS-Speedometer.ipa
+          path: ios/App/GPS-Speedometer.ipa
+          if-no-files-found: error
