@@ -3,6 +3,7 @@ import { useSpeedo } from "./store";
 import { HCMC } from "./types";
 import { haptic, likelyNoGps, offsetLatLon } from "./helpers";
 import { maybeSpeakSpeed, playOverspeedVoice, resetVoice, speakCamera, unlockVoice } from "./voice";
+import { considerSpeedCrash } from "./crash";
 
 let watchId: number | null = null;
 let nativeWatchId: string | null = null;
@@ -129,6 +130,7 @@ function afterFix(lat: number, lon: number, heading: number, speedKmh: number) {
   } else {
     maybeSpeakSpeed(speedKmh);
   }
+  considerSpeedCrash(speedKmh);
 }
 
 function onPosition(pos: GeolocationPosition) {
@@ -144,8 +146,7 @@ function onPosition(pos: GeolocationPosition) {
     accuracy: c.accuracy ?? 10,
     timestamp: lastGpsAt,
   });
-  const st = useSpeedo.getState();
-  if (st.lastFix) afterFix(st.lastFix.lat, st.lastFix.lon, st.lastFix.heading, st.currentSpeedKmh);
+  afterFix(c.latitude, c.longitude, c.heading ?? 0, raw);
 }
 
 function onError(err: GeolocationPositionError | Error) {
@@ -226,7 +227,7 @@ function startDemoLoop() {
       accuracy: 4.2,
       timestamp: lastGpsAt,
     });
-    afterFix(demoState.lat, demoState.lon, demoState.heading, useSpeedo.getState().currentSpeedKmh);
+    afterFix(demoState.lat, demoState.lon, demoState.heading, demoState.speed);
   }, 1000);
 }
 

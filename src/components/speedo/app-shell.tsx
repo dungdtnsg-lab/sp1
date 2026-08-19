@@ -2,19 +2,19 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Activity,
-  Battery,
   Bell,
   BellOff,
   Bike,
   Car,
   Cloud,
+  FileDown,
   FlipHorizontal2,
   Map as MapIcon,
   Navigation,
   RotateCcw,
   Satellite,
+  Shield,
   Table2,
-  FileDown,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -26,10 +26,9 @@ import {
   bindVisibility,
   startTracking,
   stopTracking,
-  toggleWake,
 } from "@/lib/speedo/engine";
 import { startReplay } from "@/lib/speedo/replay";
-import { downloadGithubZip } from "@/lib/speedo/download-zip";
+import { enableMotion } from "@/lib/speedo/crash";
 import { resetVoice, unlockVoice } from "@/lib/speedo/voice";
 import {
   convertSpeed,
@@ -44,7 +43,9 @@ import { useSpeedo } from "@/lib/speedo/store";
 import { ChartCanvas } from "./chart-canvas";
 import { GaugeCanvas } from "./gauge-canvas";
 import { MapView } from "./map-view";
-import { OledOverlay } from "./oled-overlay";
+import { DashcamPanel } from "./dashcam-panel";
+import { PipHud, PipIntro } from "./pip-hud";
+import { CrashCountdown, CrashSettings, SafetyTab } from "./safety-tab";
 import { SatellitesPanel } from "./satellites-panel";
 import { cn } from "@/lib/utils";
 
@@ -53,16 +54,21 @@ const TABS = [
   { id: "satellites", label: "Satellites", icon: Satellite },
   { id: "chart", label: "Speed Chart", icon: Activity },
   { id: "export", label: "Log & Xuất", icon: FileDown },
+  { id: "safety", label: "An toàn", icon: Shield },
 ] as const;
 
 export function SpeedoApp() {
   const tracking = useSpeedo((s) => s.tracking);
   const hud = useSpeedo((s) => s.hud);
   const tab = useSpeedo((s) => s.tab);
+  const trackView = useSpeedo((s) => s.trackView);
+  const safetyScreen = useSpeedo((s) => s.safetyScreen);
+  const compactGauge = tab !== "track" || trackView === "stats";
 
   useEffect(() => {
     const unbind = bindVisibility();
     useSpeedo.getState().loadTrips();
+    if (useSpeedo.getState().crash.enabled) void enableMotion();
     const id = window.setInterval(() => useSpeedo.getState().tickClock(), 1000);
     return () => {
       unbind();
@@ -72,16 +78,8 @@ export function SpeedoApp() {
 
   return (
     <div className={cn("app-shell flex h-dvh flex-col bg-bg", hud && "hud-mirror")}>
-      <div className="mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col">
-        <GaugeCard />
-        <button
-          type="button"
-          onClick={() => void downloadGithubZip()}
-          className="flex shrink-0 items-center justify-center gap-2 bg-accent px-3 py-2.5 text-[13px] font-black text-fg"
-        >
-          <FileDown className="size-4" />
-          Tải ZIP GitHub — GPS-Speedometer-github.zip
-        </button>
+      <div className="mx-auto flex h-full min-h-0 w-full flex-col">
+        <GaugeCard compact={compactGauge} />
         <nav className="flex shrink-0 border-b-2 border-line bg-surface">
           {TABS.map((t) => (
             <button
@@ -92,7 +90,7 @@ export function SpeedoApp() {
                 useSpeedo.getState().setTab(t.id);
               }}
               className={cn(
-                "flex flex-1 flex-col items-center gap-0.5 border-b-[3px] px-1 py-2 text-[11px] font-bold",
+                "flex flex-1 flex-col items-center gap-0.5 border-b-[3px] px-1 py-1.5 text-[10.5px] font-bold",
                 tab === t.id
                   ? "border-accent text-accent"
                   : "border-transparent text-muted",
@@ -116,8 +114,11 @@ export function SpeedoApp() {
           <div className={tab === "export" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
             <ExportTab />
           </div>
+          <div className={tab === "safety" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+            <SafetyTab />
+          </div>
         </main>
-        <footer className="flex shrink-0 gap-1.5 border-t border-line bg-bg px-2.5 py-2">
+        <footer className="flex shrink-0 gap-1.5 border-t border-line bg-bg px-2.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={() => void onToggleGps()}
@@ -129,10 +130,13 @@ export function SpeedoApp() {
             {tracking ? "KẾT THÚC HÀNH TRÌNH" : "BẬT GPS THEO DÕI"}
           </button>
           <VoiceButton />
-          <WakeButton />
         </footer>
       </div>
-      <OledOverlay />
+      <PipHud />
+      <CrashCountdown />
+      {safetyScreen === "crash" && <CrashSettings />}
+      {safetyScreen === "dashcam" && <DashcamPanel />}
+      {safetyScreen === "pip" && <PipIntro />}
     </div>
   );
 }
@@ -184,21 +188,7 @@ function VoiceButton() {
   );
 }
 
-function WakeButton() {
-  const wakeOn = useSpeedo((s) => s.wakeOn);
-  return (
-    <button
-      type="button"
-      onClick={() => toggleWake()}
-      className="flex w-[72px] shrink-0 flex-col items-center justify-center rounded-lg border border-border bg-elevated py-1 leading-tight text-slate-300"
-    >
-      <span className="text-[10px] font-semibold">Sáng</span>
-      <span className="text-[10px] font-bold">{wakeOn ? "BẬT" : "TẮT"}</span>
-    </button>
-  );
-}
-
-function GaugeCard() {
+function GaugeCard({ compact }: { compact: boolean }) {
   const speed = useSpeedo((s) => s.currentSpeedKmh);
   const unit = useSpeedo((s) => s.unit);
   const limit = useSpeedo((s) => s.speedLimitKmh);
@@ -219,8 +209,8 @@ function GaugeCard() {
   }, []);
 
   return (
-    <section className="flex shrink-0 flex-col items-center bg-[radial-gradient(circle_at_50%_30%,#151b29_0%,#080a10_100%)] px-2.5 pt-1.5 pb-1">
-      <div className="mb-0.5 flex w-full items-center justify-between gap-1">
+    <section className="flex shrink-0 flex-col items-center bg-[radial-gradient(circle_at_50%_30%,#151b29_0%,#080a10_100%)] px-3 pt-0.5 pb-1">
+      <div className="mb-0.5 flex w-full items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <ToolBtn
             title="Đặt lại chuyến đi"
@@ -238,16 +228,6 @@ function GaugeCard() {
             onClick={() => useSpeedo.getState().toggleAudio()}
           >
             {audio ? <Bell className="size-3.5" /> : <BellOff className="size-3.5" />}
-          </ToolBtn>
-          <ToolBtn
-            title="Màn hình đen OLED tiết kiệm pin"
-            className="border-ok text-ok bg-ok/20"
-            onClick={() => {
-              useSpeedo.getState().setOled(true);
-              haptic("medium");
-            }}
-          >
-            <Battery className="size-3.5" />
           </ToolBtn>
           <ToolBtn
             title="Chế độ HUD phản chiếu kính lái"
@@ -271,11 +251,23 @@ function GaugeCard() {
         </button>
       </div>
 
-      <div className="relative flex h-[248px] w-[248px] items-center justify-center">
+      <div className={cn("gauge-face relative flex items-center justify-center", compact && "is-compact")}>
         <GaugeCanvas />
-        <div className="pointer-events-none absolute top-[52px] z-[5] flex flex-col items-center gap-0.5">
+        <div
+          className={cn(
+            "pointer-events-none absolute z-[5] flex flex-col items-center gap-0.5",
+            compact ? "top-[18%]" : "top-[52px]",
+          )}
+        >
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-extrabold tracking-wide text-cyan">GNSS GPS</span>
+            <span
+              className={cn(
+                "font-extrabold tracking-wide text-cyan",
+                compact ? "text-[9px]" : "text-[11px]",
+              )}
+            >
+              GNSS GPS
+            </span>
             <span className="rounded bg-warn/15 px-1 py-px text-[10px] font-bold text-warn">
               {used}/{sats.length}
             </span>
@@ -295,10 +287,16 @@ function GaugeCard() {
             {clock}
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-4 flex min-w-[120px] items-baseline justify-center gap-1 rounded-md border border-border bg-[#080c14] px-3 py-0.5">
+        <div
+          className={cn(
+            "pointer-events-none absolute bottom-3 flex min-w-[100px] items-baseline justify-center gap-1 rounded-md border border-border bg-[#080c14] px-2.5 py-0.5",
+            compact && "bottom-2",
+          )}
+        >
           <span
             className={cn(
-              "font-mono text-[30px] leading-none font-black",
+              "font-mono leading-none font-black",
+              compact ? "text-[22px]" : "text-[30px]",
               over ? "text-danger" : "text-fg",
             )}
           >
@@ -431,7 +429,7 @@ function TrackTab() {
           active={view === "map"}
           onClick={() => useSpeedo.getState().setTrackView("map")}
           icon={<MapIcon className="size-3.5" />}
-          label="Bản đồ miễn phí OSM"
+          label="Bản đồ"
         />
       </div>
       <div className={view === "stats" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
@@ -470,7 +468,7 @@ function ViewToggle({
   );
 }
 
-function StatsView({ duration, stopDur }: { duration: string; stopDur: string }) {
+function StatsView({ duration }: { duration: string; stopDur: string }) {
   const unit = useSpeedo((s) => s.unit);
   const distance = useSpeedo((s) => s.totalDistanceM);
   const max = useSpeedo((s) => s.maxSpeedKmh);
@@ -479,28 +477,44 @@ function StatsView({ duration, stopDur }: { duration: string; stopDur: string })
   const fix = useSpeedo((s) => s.lastFix);
   const avg = speeds.length ? speeds.reduce((a, b) => a + b, 0) / speeds.length : 0;
   const suffix = unitLabel(unit);
+  const loc = fix ? `${fix.lat.toFixed(6)}°  ${fix.lon.toFixed(6)}°` : "—";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pb-4">
-      <div className="mb-1.5 grid grid-cols-2 gap-1.5">
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pb-2">
+      <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <Metric label="Duration (Thời gian)" value={duration} />
         <Metric label="Distance (Quãng đường)" value={`${(distance / 1000).toFixed(3)} KM`} />
       </div>
-      <div className="overflow-hidden rounded-md border border-[#362231] bg-[#1b141b]">
+      <div className="shrink-0 overflow-hidden rounded-md border border-[#362231] bg-[#1b141b]">
         <Row label="Start Time" value={start} />
-        <Row label="Thời gian dừng" value={stopDur} valueClass="text-warn" />
-        <Row label="Max Speed" value={`${convertSpeed(max, unit).toFixed(2)} ${suffix}`} valueClass="text-danger" />
-        <Row label="Avg Speed" value={`${convertSpeed(avg, unit).toFixed(2)} ${suffix}`} valueClass="text-cyan" />
+        <Row
+          label="Max Speed"
+          value={`${convertSpeed(max, unit).toFixed(2)} ${suffix}`}
+          valueClass="text-danger"
+        />
+        <Row
+          label="Avg Speed"
+          value={`${convertSpeed(avg, unit).toFixed(2)} ${suffix}`}
+          valueClass="text-cyan"
+        />
         <Row label="Altitude" value={`${(fix?.altitude ?? 0).toFixed(2)} M`} />
         <Row
           label="Heading (Hướng la bàn)"
           value={`${(fix?.heading ?? 0).toFixed(2)}° ${cardinal(fix?.heading ?? 0)}`}
         />
-        <Row
-          label="Location (Tọa độ WGS84)"
-          value={`${(fix?.lat ?? 0).toFixed(6)}°  ${(fix?.lon ?? 0).toFixed(6)}°`}
-          valueClass="font-mono text-[11px] text-pink-200"
-        />
+        <div className="flex flex-col gap-0.5 px-2.5 py-1.5">
+          <div className="flex items-center justify-between gap-2 text-[13px]">
+            <span className="font-medium text-violet-100">Location (Tọa độ WGS84)</span>
+            <button
+              type="button"
+              className="text-[10px] font-bold text-cyan"
+              onClick={() => void navigator.clipboard?.writeText(loc)}
+            >
+              Sao chép
+            </button>
+          </div>
+          <span className="font-mono text-[13px] font-bold tracking-wide text-pink-300">{loc}</span>
+        </div>
       </div>
     </div>
   );
@@ -525,8 +539,8 @@ function Row({
   valueClass?: string;
 }) {
   return (
-    <div className="flex items-center justify-between border-b border-[#2a1a26] px-2.5 py-1.5 text-[12.5px] last:border-0">
-      <span className="font-medium text-violet-100">{label}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-[#2a1a26] px-2.5 py-1.5 text-[13px]">
+      <span className="min-w-0 shrink font-medium text-violet-100">{label}</span>
       <span className={cn("text-right font-bold", valueClass)}>{value}</span>
     </div>
   );
@@ -554,20 +568,25 @@ function ChartTab() {
         Đường đỏ: vận tốc ghi mỗi 5 giây • Nhãn dưới: ngày giờ ghi nhận
       </p>
       <div className="mt-2 flex w-full items-center justify-between border-t border-border pt-2 text-[11px] font-bold text-slate-300">
-        <span>Lịch sử ngày giờ & tốc độ</span>
+        <span>Lịch sử ngày giờ · tốc độ · tọa độ</span>
         <strong className="text-[10px] text-cyan">{logs.length} mốc</strong>
       </div>
-      <div className="mt-1 max-h-[190px] w-full overflow-y-auto rounded-md border border-border/70 bg-bg">
+      <div className="mt-1 max-h-[220px] w-full overflow-y-auto rounded-md border border-border/70 bg-bg">
         {points.length === 0 ? (
           <div className="px-2 py-2 text-center text-[10px] text-subtle">Chưa có dữ liệu vận tốc</div>
         ) : (
           points.map((p) => (
             <div
               key={p.time + p.lat}
-              className="grid grid-cols-[1fr_auto] items-center gap-2 border-b border-border/50 px-2 py-1.5 text-[10px] last:border-0"
+              className="flex items-start justify-between gap-2 border-b border-border/50 px-2 py-1.5 last:border-0"
             >
-              <span className="font-mono text-muted">{formatLocalDateTime(p.time)}</span>
-              <span className="font-extrabold whitespace-nowrap">
+              <div className="min-w-0">
+                <div className="font-mono text-[10.5px] text-slate-200">{formatLocalDateTime(p.time)}</div>
+                <div className="truncate font-mono text-[10px] text-pink-200">
+                  {p.lat.toFixed(6)}°, {p.lon.toFixed(6)}°
+                </div>
+              </div>
+              <span className="shrink-0 font-extrabold text-[11px]">
                 {convertSpeed(p.speed, unit).toFixed(1)} {unitLabel(unit)}
               </span>
             </div>
@@ -597,14 +616,6 @@ function ExportTab() {
         <h3 className="text-sm font-bold text-cyan">Lưu & Xuất Dữ Liệu Hành Trình</h3>
         <AuthChip pending={isPending} signedIn={Boolean(user)} />
       </div>
-      <button
-        type="button"
-        onClick={() => void downloadGithubZip()}
-        className="flex items-center justify-center gap-2 rounded-md bg-accent px-3 py-2.5 text-[13px] font-black text-fg"
-      >
-        <FileDown className="size-4" />
-        Tải ZIP GitHub (889 KB)
-      </button>
       <p className="text-[11.5px] leading-snug text-muted">
         Xuất toàn bộ tọa độ, tốc độ, độ cao và thời gian chuyến đi sang các định dạng chuẩn quốc tế:
       </p>
@@ -672,10 +683,18 @@ function ExportTab() {
             {trips.map((trip) => (
               <div key={trip.id} className="border-t border-border/70 py-1.5 first:border-0">
                 <div className="truncate text-[10.5px] font-bold">{trip.title}</div>
-                <div className="mb-1 text-[9.5px] text-muted">
+                <div className="mb-0.5 text-[9.5px] text-muted">
                   {(trip.distanceMeters / 1000).toFixed(3)} km · {formatDuration(trip.durationMs)} ·
                   Dừng {formatDuration(trip.stoppedDurationMs)}
                 </div>
+                {trip.logs[0] && (
+                  <div className="mb-1 font-mono text-[9.5px] text-pink-200">
+                    {trip.logs[0].lat.toFixed(6)}°, {trip.logs[0].lon.toFixed(6)}°
+                    {trip.logs.at(-1) && trip.logs.length > 1
+                      ? ` → ${trip.logs.at(-1)!.lat.toFixed(6)}°, ${trip.logs.at(-1)!.lon.toFixed(6)}°`
+                      : ""}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-1">
                   <button
                     type="button"

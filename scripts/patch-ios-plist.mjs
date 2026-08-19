@@ -35,6 +35,20 @@ upsert(
   "<array>\n      <string>location</string>\n      <string>audio</string>\n    </array>",
 );
 upsert("UIViewControllerBasedStatusBarAppearance", "<false/>");
+upsert("UIStatusBarHidden", "<false/>");
+upsert("UIStatusBarStyle", "<string>UIStatusBarStyleLightContent</string>");
+upsert(
+  "NSCameraUsageDescription",
+  "<string>Ứng dụng cần camera để ghi hình camera hành trình ô tô, overlay tốc độ và tọa độ.</string>",
+);
+upsert(
+  "NSMicrophoneUsageDescription",
+  "<string>Ứng dụng cần micro để ghi âm thanh cùng video camera hành trình.</string>",
+);
+upsert(
+  "NSMotionUsageDescription",
+  "<string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>",
+);
 upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);

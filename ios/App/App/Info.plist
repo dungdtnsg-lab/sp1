@@ -66,12 +66,22 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>UIStatusBarHidden</key>
+    <false/>
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleLightContent</string>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Ứng dụng cần GPS để đo tốc độ di chuyển và vẽ bản đồ hành trình thời gian thực.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Ứng dụng cần định vị GPS liên tục để ghi lại tốc độ và quãng đường hành trình ngay cả khi bạn tắt màn hình hoặc chuyển ứng dụng.</string>
     <key>NSLocationAlwaysUsageDescription</key>
     <string>Ứng dụng cần duy trì GPS khi tắt màn hình để lưu đầy đủ dữ liệu chuyến đi.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Ứng dụng cần camera để ghi hình camera hành trình ô tô, overlay tốc độ và tọa độ.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Ứng dụng cần micro để ghi âm thanh cùng video camera hành trình.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>
     <key>UIBackgroundModes</key>
     <array>
       <string>location</string>
