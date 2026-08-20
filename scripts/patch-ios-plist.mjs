@@ -62,5 +62,30 @@ upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);
 
+const pbx = "ios/App/App.xcodeproj/project.pbxproj";
+if (existsSync(pbx)) {
+  let proj = readFileSync(pbx, "utf8");
+  if (!proj.includes("BackgroundGpsPlugin.swift")) {
+    proj = proj.replace(
+      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };",
+      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };\n\t\tB7A1101D0000000000000002 /* BackgroundGpsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */; };",
+    );
+    proj = proj.replace(
+      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = \"<group>\"; };",
+      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = \"<group>\"; };\n\t\tB7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundGpsPlugin.swift; sourceTree = \"<group>\"; };",
+    );
+    proj = proj.replace(
+      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,\n",
+      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,\n\t\t\t\tB7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */,\n",
+    );
+    proj = proj.replace(
+      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,\n",
+      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,\n\t\t\t\tB7A1101D0000000000000002 /* BackgroundGpsPlugin.swift in Sources */,\n",
+    );
+    writeFileSync(pbx, proj);
+    console.log("[ios-plist] added BackgroundGpsPlugin.swift to Xcode project");
+  }
+}
+
 spawnSync("python3", ["scripts/sync-ios-icons.py"], { stdio: "inherit" });
 console.log("[ios-plist] patched", plistPath);

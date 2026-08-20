@@ -1,3 +1,4 @@
+import type { PluginListenerHandle } from "@capacitor/core";
 import { nearestCameras } from "./cameras";
 import { useSpeedo } from "./store";
 import { HCMC } from "./types";
@@ -7,6 +8,8 @@ import { considerSpeedCrash } from "./crash";
 
 let watchId: number | null = null;
 let nativeWatchId: string | null = null;
+let bgHandles: PluginListenerHandle[] = [];
+let usingBgGps = false;
 let demoTimer: number | null = null;
 let watchdog: number | null = null;
 let lastGpsAt = 0;
@@ -150,7 +153,9 @@ function onPosition(pos: GeolocationPosition) {
 }
 
 function onError(err: GeolocationPositionError | Error) {
-  useSpeedo.getState().setBanner("warn", `GPS Warning: ${err.message}`);
+  const msg = err.message || String(err);
+  if (/unavailable|unknown|kCLError|canceled/i.test(msg)) return;
+  useSpeedo.getState().setBanner("warn", `GPS Warning: ${msg}`);
 }
 
 function clearWatcher() {
@@ -161,6 +166,21 @@ function clearWatcher() {
       /* ignore */
     }
     watchId = null;
+  }
+  const handles = bgHandles;
+  bgHandles = [];
+  const wasBg = usingBgGps;
+  usingBgGps = false;
+  if (wasBg) {
+    void (async () => {
+      try {
+        for (const h of handles) await h.remove();
+        const { BackgroundGps } = await import("./background-gps");
+        await BackgroundGps.stop();
+      } catch {
+        /* ignore */
+      }
+    })();
   }
   const id = nativeWatchId;
   nativeWatchId = null;
@@ -180,10 +200,41 @@ function clearWatcher() {
   }
 }
 
+async function startBackgroundGps(): Promise<boolean> {
+  const { BackgroundGps } = await import("./background-gps");
+  await BackgroundGps.start();
+  const fixHandle = await BackgroundGps.addListener("fix", (pos) => {
+    onPosition({
+      coords: {
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        altitude: pos.altitude,
+        accuracy: pos.accuracy,
+        altitudeAccuracy: null,
+        heading: pos.heading,
+        speed: pos.speed,
+      },
+      timestamp: pos.timestamp,
+    } as GeolocationPosition);
+  });
+  const errHandle = await BackgroundGps.addListener("error", (err) => {
+    onError(new Error(err.message));
+  });
+  bgHandles = [fixHandle, errHandle];
+  usingBgGps = true;
+  lastGpsAt = Date.now();
+  return true;
+}
+
 async function startNativeGps(): Promise<boolean> {
   try {
     const { Capacitor } = await import("@capacitor/core");
     if (!Capacitor.isNativePlatform()) return false;
+    try {
+      return await startBackgroundGps();
+    } catch {
+      /* plugin missing — fallback */
+    }
     const { Geolocation } = await import("@capacitor/geolocation");
     await Geolocation.requestPermissions();
     const callbackId = await Geolocation.watchPosition(
@@ -265,14 +316,22 @@ function stopWatchdog() {
 function restartWatcher() {
   if (!useSpeedo.getState().tracking || restarting) return;
   restarting = true;
+  const preferNative = usingBgGps || nativeWatchId != null;
   clearWatcher();
-  try {
-    startBrowserGps();
-  } catch (err) {
-    onError(err instanceof Error ? err : new Error("GPS restart failed"));
-  } finally {
-    restarting = false;
-  }
+  void (async () => {
+    try {
+      if (preferNative) {
+        const ok = await startNativeGps();
+        if (!ok) startBrowserGps();
+      } else {
+        startBrowserGps();
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err : new Error("GPS restart failed"));
+    } finally {
+      restarting = false;
+    }
+  })();
 }
 
 export async function startTracking() {
