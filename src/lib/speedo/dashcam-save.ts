@@ -156,6 +156,7 @@ export function startHudRecorder(video: HTMLVideoElement, w: number, h: number, 
     canvas,
     stop() {
       live = false;
+      cap?.getTracks().forEach((track) => track.stop());
     },
   };
 }
