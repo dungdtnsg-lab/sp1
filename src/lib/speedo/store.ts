@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import {
   HCMC,
+  CRASH_KEY,
   LOCAL_TRIPS_KEY,
+  MAP_STYLE_KEY,
   MAX_SAVED_TRIPS,
   SPEED_LIMITS,
   SPEED_LIMIT_KEY,
@@ -9,8 +11,11 @@ import {
   TELEMETRY_SAMPLE_INTERVAL_MS,
   VOICE_KEY,
   type CameraAlert,
+  type CrashSettings,
   type GpsFix,
   type GpsLog,
+  type MapStyle,
+  type SafetyScreen,
   type SavedTrip,
   type Satellite,
   type TabId,
@@ -35,6 +40,7 @@ type SpeedoState = {
   vehicle: Vehicle;
   tab: TabId;
   trackView: TrackView;
+  mapStyle: MapStyle;
   speedLimitKmh: number;
   currentSpeedKmh: number;
   maxSpeedKmh: number;
@@ -64,9 +70,14 @@ type SpeedoState = {
   replayRate: 1 | 2 | 4;
   cloudSyncing: boolean;
   lastCloudSync: number | null;
+  crash: CrashSettings;
+  safetyScreen: SafetyScreen;
+  crashLeft: number | null;
+  pipOn: boolean;
 
   setTab: (tab: TabId) => void;
   setTrackView: (view: TrackView) => void;
+  setMapStyle: (style: MapStyle) => void;
   setUnit: (unit: Unit) => void;
   setVehicle: (vehicle: Vehicle) => void;
   toggleHud: () => void;
@@ -98,6 +109,10 @@ type SpeedoState = {
   setReplayRate: (rate: 1 | 2 | 4) => void;
   setCloudSyncing: (v: boolean) => void;
   setLastCloudSync: (v: number | null) => void;
+  setCrash: (patch: Partial<CrashSettings>) => void;
+  setSafetyScreen: (screen: SafetyScreen) => void;
+  setCrashLeft: (n: number | null) => void;
+  setPipOn: (on: boolean) => void;
 };
 
 function loadLimit() {
@@ -119,6 +134,37 @@ function loadVoice() {
     /* ignore */
   }
   return false;
+}
+
+function loadCrash(): CrashSettings {
+  const fallback: CrashSettings = {
+    enabled: false,
+    autoCall: true,
+    autoSms: true,
+    delaySec: 10,
+    tos: false,
+    icePhone: "115",
+    medical: "",
+  };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CRASH_KEY) || "null") as CrashSettings | null;
+    if (parsed && typeof parsed === "object") return { ...fallback, ...parsed };
+  } catch {
+    /* ignore */
+  }
+  return fallback;
+}
+
+function loadMapStyle(): MapStyle {
+  if (typeof window === "undefined") return "osm";
+  try {
+    const value = localStorage.getItem(MAP_STYLE_KEY);
+    if (value === "osm" || value === "sat" || value === "dark" || value === "topo") return value;
+  } catch {
+    /* ignore */
+  }
+  return "osm";
 }
 
 function loadTripsFromDisk(): SavedTrip[] {
@@ -152,6 +198,7 @@ export const useSpeedo = create<SpeedoState>()((set, get) => ({
   vehicle: "car",
   tab: "track",
   trackView: "map",
+  mapStyle: loadMapStyle(),
   speedLimitKmh: loadLimit(),
   currentSpeedKmh: 0,
   maxSpeedKmh: 0,
@@ -181,9 +228,21 @@ export const useSpeedo = create<SpeedoState>()((set, get) => ({
   replayRate: 1,
   cloudSyncing: false,
   lastCloudSync: null,
+  crash: loadCrash(),
+  safetyScreen: "menu",
+  crashLeft: null,
+  pipOn: false,
 
   setTab: (tab) => set({ tab }),
   setTrackView: (trackView) => set({ trackView }),
+  setMapStyle: (mapStyle) => {
+    try {
+      localStorage.setItem(MAP_STYLE_KEY, mapStyle);
+    } catch {
+      /* ignore */
+    }
+    set({ mapStyle });
+  },
   setUnit: (unit) => set({ unit }),
   setVehicle: (vehicle) => set({ vehicle }),
   toggleHud: () => set((s) => ({ hud: !s.hud })),
@@ -217,11 +276,23 @@ export const useSpeedo = create<SpeedoState>()((set, get) => ({
   setCameraAlert: (cameraAlert) => set({ cameraAlert }),
   setCloudSyncing: (cloudSyncing) => set({ cloudSyncing }),
   setLastCloudSync: (lastCloudSync) => set({ lastCloudSync }),
+  setSafetyScreen: (safetyScreen) => set({ safetyScreen }),
+  setCrashLeft: (crashLeft) => set({ crashLeft }),
+  setPipOn: (pipOn) => set({ pipOn }),
+  setCrash: (patch) => {
+    const crash = { ...get().crash, ...patch };
+    try {
+      localStorage.setItem(CRASH_KEY, JSON.stringify(crash));
+    } catch {
+      /* ignore */
+    }
+    set({ crash });
+  },
 
   tickClock: () => {
     const now = Date.now();
     const s = get();
-    let stoppedDurationMs = s.stoppedDurationMs;
+    const stoppedDurationMs = s.stoppedDurationMs;
     let isStoppedNow = s.isStoppedNow;
     if (s.tracking && s.currentSpeedKmh < STOP_SPEED_THRESHOLD_KMH) {
       if (!s.stopStartedAt) {

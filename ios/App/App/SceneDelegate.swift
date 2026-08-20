@@ -1,6 +1,13 @@
 import UIKit
 import Capacitor
 
+final class GPSBridgeViewController: CAPBridgeViewController {
+    override public func capacitorDidLoad() {
+        bridge?.registerPluginInstance(BackgroundGpsPlugin())
+        bridge?.registerPluginInstance(DashcamNativePlugin())
+    }
+}
+
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -8,7 +15,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = scene as? UIWindowScene else { return }
 
         window = UIWindow(windowScene: windowScene)
-        window?.rootViewController = CAPBridgeViewController()
+        window?.rootViewController = GPSBridgeViewController()
         window?.makeKeyAndVisible()
 
         SceneDelegateProxy.shared.scene(scene, willConnectTo: session, options: connectionOptions)

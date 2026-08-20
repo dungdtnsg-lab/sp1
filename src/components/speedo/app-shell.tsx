@@ -13,6 +13,7 @@ import {
   Navigation,
   RotateCcw,
   Satellite,
+  Shield,
   Table2,
   FileDown,
   Volume2,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/speedo/engine";
 import { startReplay } from "@/lib/speedo/replay";
 import { downloadGithubZip } from "@/lib/speedo/download-zip";
+import { enableMotion } from "@/lib/speedo/crash";
 import { resetVoice, unlockVoice } from "@/lib/speedo/voice";
 import {
   convertSpeed,
@@ -44,7 +46,10 @@ import { useSpeedo } from "@/lib/speedo/store";
 import { ChartCanvas } from "./chart-canvas";
 import { GaugeCanvas } from "./gauge-canvas";
 import { MapView } from "./map-view";
+import { DashcamPanel } from "./dashcam-panel";
 import { OledOverlay } from "./oled-overlay";
+import { PipHud, PipIntro } from "./pip-hud";
+import { CrashCountdown, CrashSettings, SafetyTab } from "./safety-tab";
 import { SatellitesPanel } from "./satellites-panel";
 import { cn } from "@/lib/utils";
 
@@ -53,16 +58,19 @@ const TABS = [
   { id: "satellites", label: "Satellites", icon: Satellite },
   { id: "chart", label: "Speed Chart", icon: Activity },
   { id: "export", label: "Log & Xuất", icon: FileDown },
+  { id: "safety", label: "An toàn", icon: Shield },
 ] as const;
 
 export function SpeedoApp() {
   const tracking = useSpeedo((s) => s.tracking);
   const hud = useSpeedo((s) => s.hud);
   const tab = useSpeedo((s) => s.tab);
+  const safetyScreen = useSpeedo((s) => s.safetyScreen);
 
   useEffect(() => {
     const unbind = bindVisibility();
     useSpeedo.getState().loadTrips();
+    if (useSpeedo.getState().crash.enabled) void enableMotion();
     const id = window.setInterval(() => useSpeedo.getState().tickClock(), 1000);
     return () => {
       unbind();
@@ -74,14 +82,6 @@ export function SpeedoApp() {
     <div className={cn("app-shell flex h-dvh flex-col bg-bg", hud && "hud-mirror")}>
       <div className="mx-auto flex h-full min-h-0 w-full max-w-[480px] flex-col">
         <GaugeCard />
-        <button
-          type="button"
-          onClick={() => void downloadGithubZip()}
-          className="flex shrink-0 items-center justify-center gap-2 bg-accent px-3 py-2.5 text-[13px] font-black text-fg"
-        >
-          <FileDown className="size-4" />
-          Tải ZIP GitHub — GPS-Speedometer-github.zip
-        </button>
         <nav className="flex shrink-0 border-b-2 border-line bg-surface">
           {TABS.map((t) => (
             <button
@@ -116,6 +116,9 @@ export function SpeedoApp() {
           <div className={tab === "export" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
             <ExportTab />
           </div>
+          <div className={tab === "safety" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+            <SafetyTab />
+          </div>
         </main>
         <footer className="flex shrink-0 gap-1.5 border-t border-line bg-bg px-2.5 py-2">
           <button
@@ -133,6 +136,11 @@ export function SpeedoApp() {
         </footer>
       </div>
       <OledOverlay />
+      <PipHud />
+      <CrashCountdown />
+      {safetyScreen === "crash" && <CrashSettings />}
+      {safetyScreen === "dashcam" && <DashcamPanel />}
+      {safetyScreen === "pip" && <PipIntro />}
     </div>
   );
 }
@@ -431,7 +439,7 @@ function TrackTab() {
           active={view === "map"}
           onClick={() => useSpeedo.getState().setTrackView("map")}
           icon={<MapIcon className="size-3.5" />}
-          label="Bản đồ miễn phí OSM"
+          label="Bản đồ"
         />
       </div>
       <div className={view === "stats" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>

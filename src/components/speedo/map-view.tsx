@@ -1,12 +1,40 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { Circle, Map as LeafletMap, Marker, Polyline } from "leaflet";
-import { Compass, Crosshair, FastForward, Pause, Play, Square } from "lucide-react";
+import type { Circle, Map as LeafletMap, Marker, Polyline, TileLayer } from "leaflet";
+import { Compass, Crosshair, FastForward, Layers, Pause, Play, Square } from "lucide-react";
 import { camerasInView } from "@/lib/speedo/cameras";
 import { formatDuration, speedColor } from "@/lib/speedo/helpers";
 import { seekReplay, setReplayRate, stopReplay, toggleReplayPlay } from "@/lib/speedo/replay";
 import { HCMC, useSpeedo } from "@/lib/speedo/store";
+import type { MapStyle } from "@/lib/speedo/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
+
+const TILES: Record<MapStyle, { url: string; attr: string; maxZoom: number; label: string }> = {
+  osm: {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attr: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
+    maxZoom: 19,
+    label: "Đường",
+  },
+  sat: {
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr: "Tiles &copy; Esri",
+    maxZoom: 19,
+    label: "Vệ tinh",
+  },
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    attr: "&copy; OpenStreetMap &copy; CARTO",
+    maxZoom: 20,
+    label: "Đêm",
+  },
+  topo: {
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attr: "&copy; OpenStreetMap contributors, SRTM | Map style &copy; OpenTopoMap",
+    maxZoom: 17,
+    label: "Địa hình",
+  },
+};
 
 export function MapView() {
   const mapEl = useRef<HTMLDivElement>(null);
@@ -20,7 +48,11 @@ export function MapView() {
   const drawn = useRef(0);
   const fittedReplay = useRef<string | null>(null);
   const LRef = useRef<typeof import("leaflet") | null>(null);
+  const tileRef = useRef<TileLayer | null>(null);
+  const tileSwitchId = useRef(0);
   const [mapReady, setMapReady] = useState(false);
+  const [tileError, setTileError] = useState("");
+  const [tileReload, setTileReload] = useState(0);
 
   const lastCoord = useSpeedo((s) => s.lastCoord);
   const lastFix = useSpeedo((s) => s.lastFix);
@@ -32,6 +64,7 @@ export function MapView() {
   const replayTrip = useSpeedo((s) => s.replayTrip);
   const replayIndex = useSpeedo((s) => s.replayIndex);
   const cameraAlert = useSpeedo((s) => s.cameraAlert);
+  const mapStyle = useSpeedo((s) => s.mapStyle);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,12 +77,6 @@ export function MapView() {
         attributionControl: false,
       }).setView([HCMC.lat, HCMC.lon], 16);
       L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        subdomains: ["a", "b", "c"],
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
-      }).addTo(map);
       map.on("dragstart", () => useSpeedo.getState().setMapFollow(false));
       mapRef.current = map;
       setMapReady(true);
@@ -59,24 +86,92 @@ export function MapView() {
       setMapReady(false);
       mapRef.current?.remove();
       mapRef.current = null;
+      tileRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (tab === "track" && trackView === "map") {
-      setTimeout(() => {
-        const map = mapRef.current;
-        const L = LRef.current;
-        if (!map) return;
-        map.invalidateSize();
+    const map = mapRef.current;
+    const L = LRef.current;
+    if (!map || !L) return;
+    const spec = TILES[mapStyle];
+    const previous = tileRef.current;
+    const switchId = ++tileSwitchId.current;
+    let promoted = previous == null;
+    let failures = 0;
+    const next = L.tileLayer(spec.url, {
+      maxZoom: spec.maxZoom,
+      attribution: spec.attr,
+      crossOrigin: true,
+    });
+    const onLoad = () => {
+      if (tileSwitchId.current !== switchId) return;
+      promoted = true;
+      tileRef.current = next;
+      if (previous && previous !== next && map.hasLayer(previous)) map.removeLayer(previous);
+      setTileError("");
+    };
+    const onError = () => {
+      failures += 1;
+      if (failures === 1 && tileSwitchId.current === switchId) {
+        setTileError("Không tải được một số ô bản đồ. Kiểm tra mạng rồi thử lại.");
+      }
+    };
+    next.once("load", onLoad);
+    next.on("tileerror", onError);
+    next.addTo(map);
+    if (!previous) tileRef.current = next;
+    if (map.getZoom() > spec.maxZoom) map.setZoom(spec.maxZoom);
+
+    return () => {
+      next.off("load", onLoad);
+      next.off("tileerror", onError);
+      if (!promoted && map.hasLayer(next)) map.removeLayer(next);
+    };
+  }, [mapStyle, mapReady, tileReload]);
+
+  useEffect(() => {
+    if (!mapReady || tab !== "track" || trackView !== "map") return;
+    const map = mapRef.current;
+    const el = mapEl.current;
+    const L = LRef.current;
+    if (!map || !el) return;
+    let frame = 0;
+    let timer = 0;
+    const syncSize = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        map.invalidateSize({ pan: false, debounceMoveend: true });
         const trip = useSpeedo.getState().replayTrip;
         if (trip && L && trip.logs.length > 1) {
           const bounds = L.latLngBounds(trip.logs.map((p) => [p.lat, p.lon] as [number, number]));
           if (bounds.isValid()) map.fitBounds(bounds, { padding: [28, 28] });
         }
-      }, 120);
-    }
-  }, [tab, trackView, replayTrip]);
+      });
+    };
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(syncSize);
+    observer?.observe(el);
+    window.addEventListener("resize", syncSize);
+    window.visualViewport?.addEventListener("resize", syncSize);
+    syncSize();
+    timer = window.setTimeout(syncSize, 120);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      window.removeEventListener("resize", syncSize);
+      window.visualViewport?.removeEventListener("resize", syncSize);
+    };
+  }, [mapReady, tab, trackView, replayTrip]);
+
+  useEffect(() => {
+    const reload = () => {
+      setTileError("");
+      setTileReload((value) => value + 1);
+    };
+    window.addEventListener("online", reload);
+    return () => window.removeEventListener("online", reload);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -220,7 +315,7 @@ export function MapView() {
       for (const poly of segsRef.current) map.removeLayer(poly);
       segsRef.current = [];
       drawn.current = 0;
-      startRef.current && map.removeLayer(startRef.current);
+      if (startRef.current) map.removeLayer(startRef.current);
       startRef.current = null;
     }
     for (let i = drawn.current; i < segments.length; i++) {
@@ -257,14 +352,27 @@ export function MapView() {
   }
 
   return (
-    <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-lg border border-border">
-      <div ref={mapEl} className="h-full min-h-[240px] w-full bg-bg" />
-      <div className="absolute inset-x-1.5 top-1.5 z-10 rounded-md border border-border bg-bg/90 px-2 py-1 text-[10px] backdrop-blur-sm">
-        <div className="mb-0.5 flex items-center justify-between font-bold text-muted">
-          <span>Dải màu tốc độ:</span>
-          <span className="rounded bg-elevated px-1.5 py-px text-[9.5px] text-cyan">
-            OSM · Camera phạt nguội
-          </span>
+    <div className="relative isolate min-h-[240px] flex-1 overflow-hidden rounded-lg border border-border">
+      <div ref={mapEl} className="relative z-0 h-full min-h-[240px] w-full bg-bg" />
+      <div className="absolute inset-x-1.5 top-1.5 z-10 rounded-md border border-border bg-bg/90 px-1.5 py-1 text-[10px] backdrop-blur-sm">
+        <div className="mb-1 flex items-center gap-1 font-bold text-muted">
+          <Layers className="size-3" />
+          <span>Chế độ bản đồ</span>
+        </div>
+        <div className="mb-1 flex gap-1">
+          {(Object.keys(TILES) as MapStyle[]).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => useSpeedo.getState().setMapStyle(id)}
+              className={cn(
+                "flex-1 rounded-sm py-1 text-center text-[9.5px] font-bold",
+                mapStyle === id ? "bg-accent text-fg" : "bg-elevated text-slate-300",
+              )}
+            >
+              {TILES[id].label}
+            </button>
+          ))}
         </div>
         <div className="flex gap-1">
           <span className="flex-1 rounded-sm bg-ok py-0.5 text-center font-bold text-bg">{"<20"}</span>
@@ -274,6 +382,15 @@ export function MapView() {
           <span className="flex-1 rounded-sm bg-danger py-0.5 text-center font-bold text-fg">{">80 km/h"}</span>
         </div>
       </div>
+      {tileError && (
+        <button
+          type="button"
+          onClick={() => setTileReload((value) => value + 1)}
+          className="absolute inset-x-2 top-[72px] z-20 rounded-md border border-danger/50 bg-bg/90 px-2 py-1.5 text-center text-[10px] font-bold text-rose-200"
+        >
+          {tileError} Chạm để tải lại.
+        </button>
+      )}
       {replayTrip && <ReplayBar />}
       <div className="absolute right-2 bottom-2 z-10 flex flex-col gap-1.5">
         <MapBtn

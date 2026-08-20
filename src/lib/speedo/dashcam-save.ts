@@ -6,11 +6,53 @@ export type SavedClip = {
   at: string;
   name: string;
   cam: string;
-  url: string;
-  blob: Blob;
+  saved: boolean;
+  url?: string;
+  blob?: Blob;
+  assetIdentifier?: string;
+  thumbnailUrl?: string;
+  durationSec?: number;
 };
 
-export async function persistClip(blob: Blob, name: string, kind: "video" | "photo" = "video") {
+export type PersistResult = {
+  uri: string;
+  saved: boolean;
+  shared?: boolean;
+  assetIdentifier?: string;
+};
+
+type MediaBridge = {
+  getAlbums(): Promise<{ albums: Array<{ identifier: string; name: string }> }>;
+  createAlbum(options: { name: string }): Promise<void>;
+  getMedias(options: {
+    quantity: number;
+    thumbnailWidth: number;
+    thumbnailHeight: number;
+    thumbnailQuality: number;
+    types: "videos";
+    albumIdentifier: string;
+  }): Promise<{
+    medias: Array<{
+      identifier: string;
+      data: string;
+      creationDate: string;
+      duration?: number;
+    }>;
+  }>;
+  getMediaByIdentifier(options: { identifier: string }): Promise<{ path: string }>;
+  savePhoto(options: { path: string; albumIdentifier?: string }): Promise<{ identifier?: string }>;
+  saveVideo(options: { path: string; albumIdentifier?: string }): Promise<{ identifier?: string }>;
+};
+
+const DASHCAM_ALBUM = "GPS Speedometer";
+const LOCAL_CLIPS_KEY = "speedo.dashcam.clips.v1";
+let albumPromise: Promise<string | undefined> | null = null;
+
+export async function persistClip(
+  blob: Blob,
+  name: string,
+  kind: "video" | "photo" = "video",
+): Promise<PersistResult> {
   if (!blob || blob.size < 64) {
     throw new Error("File rỗng — quay ít nhất 3 giây rồi bấm dừng.");
   }
@@ -22,9 +64,13 @@ export async function persistClip(blob: Blob, name: string, kind: "video" | "pho
 
   try {
     const { Media } = await import("@capacitor-community/media");
-    if (kind === "photo") await Media.savePhoto({ path: dataUrl });
-    else await Media.saveVideo({ path: dataUrl });
-    return { uri: dataUrl, saved: true };
+    const media = Media as MediaBridge;
+    const albumIdentifier = await ensureAlbum(media).catch(() => undefined);
+    const result =
+      kind === "photo"
+        ? await media.savePhoto({ path: dataUrl, albumIdentifier })
+        : await media.saveVideo({ path: dataUrl, albumIdentifier });
+    return { uri: dataUrl, saved: true, assetIdentifier: result.identifier };
   } catch {
     /* fall through */
   }
@@ -41,13 +87,17 @@ export async function persistClip(blob: Blob, name: string, kind: "video" | "pho
     uri = written.uri;
     try {
       const { Media } = await import("@capacitor-community/media");
-      if (kind === "photo") await Media.savePhoto({ path: uri });
-      else await Media.saveVideo({ path: uri });
-      return { uri, saved: true };
+      const media = Media as MediaBridge;
+      const albumIdentifier = await ensureAlbum(media).catch(() => undefined);
+      const result =
+        kind === "photo"
+          ? await media.savePhoto({ path: uri, albumIdentifier })
+          : await media.saveVideo({ path: uri, albumIdentifier });
+      return { uri, saved: true, assetIdentifier: result.identifier };
     } catch {
       const { Share } = await import("@capacitor/share");
       await Share.share({ title: safe, files: [uri] });
-      return { uri, saved: true };
+      return { uri, saved: false, shared: true };
     }
   } catch {
     const url = URL.createObjectURL(blob);
@@ -59,6 +109,109 @@ export async function persistClip(blob: Blob, name: string, kind: "video" | "pho
     a.remove();
     return { uri: url, saved: false };
   }
+}
+
+async function ensureAlbum(media: MediaBridge) {
+  albumPromise ??= (async () => {
+    const current = await media.getAlbums();
+    const existing = current.albums.find((album) => album.name === DASHCAM_ALBUM);
+    if (existing) return existing.identifier;
+    await media.createAlbum({ name: DASHCAM_ALBUM });
+    const refreshed = await media.getAlbums();
+    return refreshed.albums.find((album) => album.name === DASHCAM_ALBUM)?.identifier;
+  })();
+  try {
+    return await albumPromise;
+  } catch (error) {
+    albumPromise = null;
+    throw error;
+  }
+}
+
+export async function loadSavedClips(): Promise<SavedClip[]> {
+  const local = loadLocalClips();
+  try {
+    const { Media } = await import("@capacitor-community/media");
+    const media = Media as MediaBridge;
+    const albums = await media.getAlbums();
+    const album = albums.albums.find((entry) => entry.name === DASHCAM_ALBUM);
+    if (!album) return local;
+    const result = await media.getMedias({
+      quantity: 24,
+      thumbnailWidth: 240,
+      thumbnailHeight: 160,
+      thumbnailQuality: 72,
+      types: "videos",
+      albumIdentifier: album.identifier,
+    });
+    const photos = result.medias.map((asset) => ({
+      id: asset.identifier,
+      at: formatSavedAt(asset.creationDate),
+      name: `dashcam-${asset.creationDate || Date.now()}.mp4`,
+      cam: "Đã lưu trong Ảnh",
+      saved: true,
+      assetIdentifier: asset.identifier,
+      thumbnailUrl: asset.data ? `data:image/jpeg;base64,${asset.data}` : undefined,
+      durationSec: asset.duration,
+    }));
+    const photoIds = new Set(photos.map((clip) => clip.id));
+    return [...photos, ...local.filter((clip) => !photoIds.has(clip.id))];
+  } catch {
+    return local;
+  }
+}
+
+export function rememberSavedClip(clip: SavedClip) {
+  const durableUrl = clip.url?.startsWith("file:") ? clip.url : undefined;
+  if (!clip.assetIdentifier && !durableUrl) return;
+  try {
+    const next: SavedClip = {
+      id: clip.id,
+      at: clip.at,
+      name: clip.name,
+      cam: clip.cam,
+      saved: clip.saved,
+      assetIdentifier: clip.assetIdentifier,
+      durationSec: clip.durationSec,
+      url: durableUrl,
+    };
+    const current = loadLocalClips().filter(
+      (entry) =>
+        entry.id !== clip.id &&
+        (!durableUrl || entry.url !== durableUrl) &&
+        (!clip.assetIdentifier || entry.assetIdentifier !== clip.assetIdentifier),
+    );
+    localStorage.setItem(LOCAL_CLIPS_KEY, JSON.stringify([next, ...current].slice(0, 48)));
+  } catch {
+    /* Storage có thể bị tắt; video trong Photos/Documents vẫn không bị xóa. */
+  }
+}
+
+function loadLocalClips(): SavedClip[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_CLIPS_KEY) || "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (clip): clip is SavedClip =>
+        Boolean(
+          clip &&
+            typeof clip === "object" &&
+            "id" in clip &&
+            typeof clip.id === "string" &&
+            "name" in clip &&
+            typeof clip.name === "string" &&
+            "saved" in clip &&
+            typeof clip.saved === "boolean",
+        ),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function formatSavedAt(value: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString("vi-VN") : value;
 }
 
 function blobToBase64(blob: Blob) {
@@ -94,7 +247,7 @@ export function pickRecorderMime() {
   return "";
 }
 
-export function drawHud(ctx: CanvasRenderingContext2D, w: number, h: number) {
+export function drawHud(ctx: CanvasRenderingContext2D, w: number, _h: number) {
   const s = useSpeedo.getState();
   const pad = Math.round(w * 0.035);
   const fs = Math.max(18, Math.round(w * 0.032));
@@ -174,6 +327,33 @@ export async function snapshotHud(video: HTMLVideoElement, w: number, h: number)
   return blob;
 }
 
-export async function shareExisting(_url: string, name: string, blob: Blob) {
-  await persistClip(blob, name, blob.type.startsWith("image/") ? "photo" : "video");
+export async function shareExisting(clip: SavedClip): Promise<PersistResult> {
+  if (clip.assetIdentifier) {
+    const { Media } = await import("@capacitor-community/media");
+    const media = Media as MediaBridge;
+    const file = await media.getMediaByIdentifier({ identifier: clip.assetIdentifier });
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ title: clip.name, files: [file.path] });
+    return { uri: file.path, saved: true, assetIdentifier: clip.assetIdentifier };
+  }
+  if (clip.url?.startsWith("file:")) {
+    if (!clip.saved) {
+      try {
+        const { Media } = await import("@capacitor-community/media");
+        const media = Media as MediaBridge;
+        const albumIdentifier = await ensureAlbum(media).catch(() => undefined);
+        const result = await media.saveVideo({ path: clip.url, albumIdentifier });
+        return { uri: clip.url, saved: true, assetIdentifier: result.identifier };
+      } catch {
+        /* Cho phép người dùng xuất file nếu quyền Photos vẫn bị từ chối. */
+      }
+    }
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ title: clip.name, files: [clip.url] });
+    return { uri: clip.url, saved: clip.saved, shared: true };
+  }
+  if (clip.blob) {
+    return persistClip(clip.blob, clip.name, clip.blob.type.startsWith("image/") ? "photo" : "video");
+  }
+  throw new Error("Không tìm thấy file video để chia sẻ.");
 }

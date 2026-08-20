@@ -2,6 +2,12 @@ name: "1. Bung ZIP lên repo"
 
 on:
   workflow_dispatch:
+    inputs:
+      replace_source:
+        description: "Ghi đè source hiện có bằng ZIP (có thể làm mất bản sửa mới)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -14,8 +20,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Tìm file ZIP rồi bung
+        env:
+          REPLACE_SOURCE: ${{ inputs.replace_source }}
         run: |
           set -euo pipefail
+          if [ -f package.json ] && [ "${REPLACE_SOURCE}" != "true" ]; then
+            echo "Source đã tồn tại — bỏ qua ZIP cũ để không ghi đè các bản sửa mới."
+            echo "Chỉ bật replace_source khi bạn thật sự muốn thay toàn bộ source."
+            exit 0
+          fi
           ZIP=""
           for f in ./GPS-Speedometer-github.zip ./*.zip; do
             if [ -f "$f" ]; then ZIP="$f"; break; fi
