@@ -69,13 +69,13 @@
   }
 
   .gauge-face {
-    width: min(280px, 78vw, 38dvh);
-    height: min(280px, 78vw, 38dvh);
+    width: min(240px, 68vw, 30dvh);
+    height: min(240px, 68vw, 30dvh);
   }
 
   .gauge-face.is-compact {
-    width: min(210px, 58vw, 28dvh);
-    height: min(210px, 58vw, 28dvh);
+    width: min(148px, 42vw, 18dvh);
+    height: min(148px, 42vw, 18dvh);
   }
 
   .hud-mirror {

@@ -15,7 +15,7 @@ export function SatellitesPanel() {
   const ranked = [...sats].sort((a, b) => b.cn0 - a.cn0);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-1.5">
+    <section className="flex flex-col gap-1.5 pb-4">
       <div className="grid grid-cols-4 gap-1">
         <Stat label="FIX" value={metrics.fix} tone={metrics.fix === "3D" ? "ok" : "warn"} />
         <Stat
@@ -55,12 +55,12 @@ export function SatellitesPanel() {
         <RadarCanvas />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border bg-elevated">
+      <div className="rounded-md border border-border bg-elevated">
         <div className="flex items-center justify-between border-b border-border px-2 py-1 text-[10px] font-bold text-muted">
           <span>C/N0 dB-Hz</span>
           <span>chấm đặc = used in fix</span>
         </div>
-        <div className="max-h-[220px] overflow-y-auto px-2 py-1">
+        <div className="px-2 py-1">
           {ranked.map((s) => (
             <div key={s.prn} className="mb-0.5 grid grid-cols-[42px_28px_1fr_28px] items-center gap-1">
               <span className="font-mono text-[10px] font-bold" style={{ color: constellationColor(s.sys) }}>

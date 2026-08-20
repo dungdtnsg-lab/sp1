@@ -64,6 +64,7 @@ export function SpeedoApp() {
   const trackView = useSpeedo((s) => s.trackView);
   const safetyScreen = useSpeedo((s) => s.safetyScreen);
   const compactGauge = tab !== "track" || trackView === "stats";
+  const mapLock = tab === "track" && trackView === "map";
 
   useEffect(() => {
     const unbind = bindVisibility();
@@ -101,24 +102,29 @@ export function SpeedoApp() {
             </button>
           ))}
         </nav>
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-1.5">
-          <div className={tab === "track" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+        <main
+          className={cn(
+            "min-h-0 flex-1 p-1.5",
+            mapLock ? "flex flex-col overflow-hidden" : "scroll-panel",
+          )}
+        >
+          <div className={tab === "track" ? (mapLock ? "flex min-h-0 flex-1 flex-col" : "block") : "hidden"}>
             <TrackTab />
           </div>
-          <div className={tab === "satellites" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "satellites" ? "block" : "hidden"}>
             <SatellitesTab />
           </div>
-          <div className={tab === "chart" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "chart" ? "block" : "hidden"}>
             <ChartTab />
           </div>
-          <div className={tab === "export" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "export" ? "block" : "hidden"}>
             <ExportTab />
           </div>
-          <div className={tab === "safety" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
+          <div className={tab === "safety" ? "block" : "hidden"}>
             <SafetyTab />
           </div>
         </main>
-        <footer className="flex shrink-0 gap-1.5 border-t border-line bg-bg px-2.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <footer className="z-20 flex shrink-0 gap-1.5 border-t border-line bg-bg px-2.5 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             onClick={() => void onToggleGps()}
@@ -370,7 +376,7 @@ function TrackTab() {
   const stopDur = useMemo(() => formatDuration(useSpeedo.getState().stoppedMs()), [nowMs]);
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <section className={view === "map" ? "flex min-h-0 flex-1 flex-col" : "block"}>
       <div
         className={cn(
           "mb-1 shrink-0 rounded-md border px-2 py-1 text-center text-[11px] font-bold",
@@ -415,8 +421,11 @@ function TrackTab() {
           label="Bản đồ"
         />
       </div>
-      <div className={view === "stats" ? "min-h-0 flex-1 overflow-hidden" : "hidden"}>
+      <div className={view === "stats" ? "block" : "hidden"}>
         <StatsView duration={duration} stopDur={stopDur} />
+      </div>
+      <div className={view === "map" ? "flex min-h-[45dvh] flex-1 flex-col" : "hidden"}>
+        <MapView />
       </div>
       <div className={view === "map" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
         <MapView />
@@ -463,10 +472,7 @@ function StatsView({ duration }: { duration: string; stopDur: string }) {
   const loc = fix ? `${fix.lat.toFixed(6)}°  ${fix.lon.toFixed(6)}°` : "—";
 
   return (
-    <div
-      className="scroll-panel min-h-0 flex-1 space-y-1.5 overflow-y-scroll overscroll-y-contain pb-8"
-      style={{ WebkitOverflowScrolling: "touch" }}
-    >
+    <div className="space-y-1.5 pb-4">
       <div className="grid shrink-0 grid-cols-2 gap-1.5">
         <Metric label="Duration (Thời gian)" value={duration} />
         <Metric label="Distance (Quãng đường)" value={`${(distance / 1000).toFixed(3)} KM`} />
@@ -542,7 +548,7 @@ function ChartTab() {
   const logs = useSpeedo((s) => s.logs);
   const points = logs.slice(-120).reverse();
   return (
-    <section className="flex flex-col items-center rounded-[10px] border border-border bg-elevated p-2">
+    <section className="flex flex-col rounded-[10px] border border-border bg-elevated p-2 pb-4">
       <div className="mb-1.5 flex w-full items-center justify-between">
         <span className="text-[12.5px] font-bold text-accent">Đồ thị vận tốc thời gian thực</span>
         <span className="rounded bg-cyan/15 px-1.5 py-0.5 text-xs font-extrabold text-cyan">
@@ -557,7 +563,7 @@ function ChartTab() {
         <span>Lịch sử ngày giờ · tốc độ · tọa độ</span>
         <strong className="text-[10px] text-cyan">{logs.length} mốc</strong>
       </div>
-      <div className="mt-1 max-h-[220px] w-full overflow-y-auto rounded-md border border-border/70 bg-bg">
+      <div className="mt-1 w-full rounded-md border border-border/70 bg-bg">
         {points.length === 0 ? (
           <div className="px-2 py-2 text-center text-[10px] text-subtle">Chưa có dữ liệu vận tốc</div>
         ) : (

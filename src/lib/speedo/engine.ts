@@ -155,19 +155,24 @@ function onError(err: GeolocationPositionError | Error) {
 
 function clearWatcher() {
   if (watchId != null) {
-    navigator.geolocation?.clearWatch(watchId);
+    try {
+      navigator.geolocation.clearWatch(watchId);
+    } catch {
+      /* ignore */
+    }
     watchId = null;
   }
-  if (nativeWatchId != null) {
+  const id = nativeWatchId;
+  nativeWatchId = null;
+  if (id) {
     void (async () => {
       try {
         const { Geolocation } = await import("@capacitor/geolocation");
-        await Geolocation.clearWatch({ id: nativeWatchId! });
+        await Geolocation.clearWatch({ id });
       } catch {
         /* ignore */
       }
     })();
-    nativeWatchId = null;
   }
   if (demoTimer != null) {
     window.clearInterval(demoTimer);
@@ -181,7 +186,7 @@ async function startNativeGps(): Promise<boolean> {
     if (!Capacitor.isNativePlatform()) return false;
     const { Geolocation } = await import("@capacitor/geolocation");
     await Geolocation.requestPermissions();
-    nativeWatchId = await Geolocation.watchPosition(
+    const callbackId = await Geolocation.watchPosition(
       { enableHighAccuracy: true },
       (pos, err) => {
         if (err || !pos) {
@@ -202,6 +207,7 @@ async function startNativeGps(): Promise<boolean> {
         } as GeolocationPosition);
       },
     );
+    nativeWatchId = typeof callbackId === "string" && callbackId ? callbackId : null;
     lastGpsAt = Date.now();
     return true;
   } catch {
