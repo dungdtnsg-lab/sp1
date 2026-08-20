@@ -21,9 +21,14 @@ export default defineConfig({
     outDir: "www",
     emptyOutDir: true,
     sourcemap: false,
+    minify: "esbuild",
     assetsInlineLimit: 0,
     rollupOptions: {
       input: path.resolve(import.meta.dirname, "index.native.html"),
     },
+  },
+  esbuild: {
+    drop: ["console", "debugger"],
+    legalComments: "none",
   },
 });
