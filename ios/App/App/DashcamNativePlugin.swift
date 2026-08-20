@@ -139,7 +139,7 @@ final class DualDashcamRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferD
             latestFrontBuffer = pixel
             return
         }
-        guard output === rearOutput, let adaptor, let input else { return }
+        guard output === rearOutput, let adaptor, let input = writerInput else { return }
         let time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
         if writer?.status == .unknown {
             writer?.startWriting()
