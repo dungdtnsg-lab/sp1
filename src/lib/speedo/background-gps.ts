@@ -1,6 +1,6 @@
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 
-type BgFix = {
+export type BgFix = {
   latitude: number;
   longitude: number;
   altitude: number;
@@ -11,8 +11,10 @@ type BgFix = {
 };
 
 type BackgroundGpsPlugin = {
-  start(): Promise<{ ok: boolean }>;
+  start(): Promise<{ ok: boolean; auth?: string }>;
   stop(): Promise<void>;
+  drain(): Promise<{ points: BgFix[] }>;
+  status(): Promise<{ running: boolean; auth: string; buffered: number }>;
   addListener(
     eventName: "fix",
     listenerFunc: (pos: BgFix) => void,
@@ -24,4 +26,3 @@ type BackgroundGpsPlugin = {
 };
 
 export const BackgroundGps = registerPlugin<BackgroundGpsPlugin>("BackgroundGps");
-export type { BgFix };

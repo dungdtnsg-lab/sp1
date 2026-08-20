@@ -5,6 +5,7 @@ import { HCMC } from "./types";
 import { haptic, likelyNoGps, offsetLatLon } from "./helpers";
 import { maybeSpeakSpeed, playOverspeedVoice, resetVoice, speakCamera, unlockVoice } from "./voice";
 import { considerSpeedCrash } from "./crash";
+import type { BgFix } from "./background-gps";
 
 let watchId: number | null = null;
 let nativeWatchId: string | null = null;
@@ -136,25 +137,36 @@ function afterFix(lat: number, lon: number, heading: number, speedKmh: number) {
   considerSpeedCrash(speedKmh);
 }
 
-function onPosition(pos: GeolocationPosition) {
+function ingestFix(pos: BgFix) {
   lastGpsAt = Date.now();
-  const c = pos.coords;
-  const raw = c.speed != null && c.speed > 0 ? c.speed * 3.6 : 0;
+  const raw = pos.speed != null && pos.speed > 0 ? pos.speed * 3.6 : 0;
   useSpeedo.getState().applyFix({
-    lat: c.latitude,
-    lon: c.longitude,
+    lat: pos.latitude,
+    lon: pos.longitude,
     speedKmh: raw,
-    heading: c.heading ?? 0,
-    altitude: c.altitude ?? 0,
-    accuracy: c.accuracy ?? 10,
-    timestamp: lastGpsAt,
+    heading: pos.heading ?? 0,
+    altitude: pos.altitude ?? 0,
+    accuracy: pos.accuracy ?? 10,
+    timestamp: pos.timestamp || lastGpsAt,
   });
-  afterFix(c.latitude, c.longitude, c.heading ?? 0, raw);
+  afterFix(pos.latitude, pos.longitude, pos.heading ?? 0, raw);
+}
+
+function onPosition(pos: GeolocationPosition) {
+  ingestFix({
+    latitude: pos.coords.latitude,
+    longitude: pos.coords.longitude,
+    altitude: pos.coords.altitude ?? 0,
+    accuracy: pos.coords.accuracy ?? 10,
+    speed: pos.coords.speed ?? 0,
+    heading: pos.coords.heading ?? 0,
+    timestamp: pos.timestamp,
+  });
 }
 
 function onError(err: GeolocationPositionError | Error) {
   const msg = err.message || String(err);
-  if (/unavailable|unknown|kCLError|canceled/i.test(msg)) return;
+  if (/unavailable|unknown|kCLError|canceled|not implemented/i.test(msg)) return;
   useSpeedo.getState().setBanner("warn", `GPS Warning: ${msg}`);
 }
 
@@ -200,29 +212,55 @@ function clearWatcher() {
   }
 }
 
+async function drainNativeBuffer() {
+  if (!usingBgGps) return;
+  try {
+    const { BackgroundGps } = await import("./background-gps");
+    const { points } = await BackgroundGps.drain();
+    for (const p of points) ingestFix(p);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function pingNativeGps() {
+  if (!usingBgGps) return;
+  try {
+    const { BackgroundGps } = await import("./background-gps");
+    const st = await BackgroundGps.status();
+    if (st.auth === "whenInUse") {
+      useSpeedo.getState().setBanner(
+        "warn",
+        "GPS nền: Cài đặt → GPS Speedometer → Vị trí → Luôn luôn",
+      );
+    }
+    if (!st.running) await BackgroundGps.start();
+    await drainNativeBuffer();
+  } catch {
+    /* ignore */
+  }
+}
+
 async function startBackgroundGps(): Promise<boolean> {
   const { BackgroundGps } = await import("./background-gps");
-  await BackgroundGps.start();
-  const fixHandle = await BackgroundGps.addListener("fix", (pos) => {
-    onPosition({
-      coords: {
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        altitude: pos.altitude,
-        accuracy: pos.accuracy,
-        altitudeAccuracy: null,
-        heading: pos.heading,
-        speed: pos.speed,
-      },
-      timestamp: pos.timestamp,
-    } as GeolocationPosition);
-  });
-  const errHandle = await BackgroundGps.addListener("error", (err) => {
-    onError(new Error(err.message));
-  });
-  bgHandles = [fixHandle, errHandle];
+  const res = await BackgroundGps.start();
+  if (bgHandles.length === 0) {
+    const fixHandle = await BackgroundGps.addListener("fix", (pos) => ingestFix(pos));
+    const errHandle = await BackgroundGps.addListener("error", (err) => {
+      onError(new Error(err.message));
+    });
+    bgHandles = [fixHandle, errHandle];
+  }
   usingBgGps = true;
   lastGpsAt = Date.now();
+  if (res.auth === "whenInUse") {
+    useSpeedo.getState().setBanner(
+      "warn",
+      "GPS nền: Cài đặt → GPS Speedometer → Vị trí → Luôn luôn",
+    );
+  } else {
+    useSpeedo.getState().setBanner("good", "GPS nền đã bật — tắt màn vẫn ghi hành trình");
+  }
   return true;
 }
 
@@ -230,38 +268,9 @@ async function startNativeGps(): Promise<boolean> {
   try {
     const { Capacitor } = await import("@capacitor/core");
     if (!Capacitor.isNativePlatform()) return false;
-    try {
-      return await startBackgroundGps();
-    } catch {
-      /* plugin missing — fallback */
-    }
-    const { Geolocation } = await import("@capacitor/geolocation");
-    await Geolocation.requestPermissions();
-    const callbackId = await Geolocation.watchPosition(
-      { enableHighAccuracy: true },
-      (pos, err) => {
-        if (err || !pos) {
-          if (err) onError(err);
-          return;
-        }
-        onPosition({
-          coords: {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            altitude: pos.coords.altitude,
-            accuracy: pos.coords.accuracy,
-            altitudeAccuracy: pos.coords.altitudeAccuracy ?? null,
-            heading: pos.coords.heading,
-            speed: pos.coords.speed,
-          },
-          timestamp: pos.timestamp,
-        } as GeolocationPosition);
-      },
-    );
-    nativeWatchId = typeof callbackId === "string" && callbackId ? callbackId : null;
-    lastGpsAt = Date.now();
-    return true;
-  } catch {
+    return await startBackgroundGps();
+  } catch (err) {
+    onError(err instanceof Error ? err : new Error("Không mở được GPS native"));
     return false;
   }
 }
@@ -292,7 +301,7 @@ function startBrowserGps() {
   watchId = navigator.geolocation.watchPosition(onPosition, onError, {
     enableHighAccuracy: true,
     maximumAge: 0,
-    timeout: 10000,
+    timeout: 20000,
   });
   lastGpsAt = Date.now();
 }
@@ -302,8 +311,12 @@ function startWatchdog() {
   watchdog = window.setInterval(() => {
     const s = useSpeedo.getState();
     if (!s.tracking || s.demo) return;
-    if (lastGpsAt && Date.now() - lastGpsAt > 8000) restartWatcher();
-  }, 5000);
+    if (usingBgGps) {
+      void pingNativeGps();
+      return;
+    }
+    if (lastGpsAt && Date.now() - lastGpsAt > 15000) restartWatcher();
+  }, 8000);
 }
 
 function stopWatchdog() {
@@ -315,8 +328,12 @@ function stopWatchdog() {
 
 function restartWatcher() {
   if (!useSpeedo.getState().tracking || restarting) return;
+  if (usingBgGps) {
+    void pingNativeGps();
+    return;
+  }
   restarting = true;
-  const preferNative = usingBgGps || nativeWatchId != null;
+  const preferNative = nativeWatchId != null;
   clearWatcher();
   void (async () => {
     try {
@@ -388,11 +405,19 @@ export function bindVisibility() {
   const onVis = () => {
     if (document.visibilityState === "visible" && useSpeedo.getState().tracking) {
       void requestWakeLock();
+      if (usingBgGps) {
+        void pingNativeGps();
+        return;
+      }
       if (!useSpeedo.getState().demo && lastGpsAt && Date.now() - lastGpsAt > 7000) {
         restartWatcher();
       }
     }
   };
   document.addEventListener("visibilitychange", onVis);
-  return () => document.removeEventListener("visibilitychange", onVis);
+  window.addEventListener("focus", onVis);
+  return () => {
+    document.removeEventListener("visibilitychange", onVis);
+    window.removeEventListener("focus", onVis);
+  };
 }
