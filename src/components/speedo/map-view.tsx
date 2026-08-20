@@ -1,40 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Circle, Map as LeafletMap, Marker, Polyline } from "leaflet";
-import { Compass, Crosshair, FastForward, Layers, Pause, Play, Square } from "lucide-react";
+import { Compass, Crosshair, FastForward, Pause, Play, Square } from "lucide-react";
 import { camerasInView } from "@/lib/speedo/cameras";
 import { formatDuration, speedColor } from "@/lib/speedo/helpers";
 import { seekReplay, setReplayRate, stopReplay, toggleReplayPlay } from "@/lib/speedo/replay";
 import { HCMC, useSpeedo } from "@/lib/speedo/store";
-import type { MapStyle } from "@/lib/speedo/types";
 import { cn } from "@/lib/utils";
 import "leaflet/dist/leaflet.css";
-
-const TILES: Record<MapStyle, { url: string; attr: string; maxZoom: number; label: string }> = {
-  osm: {
-    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attr: "&copy; OpenStreetMap",
-    maxZoom: 19,
-    label: "Đường",
-  },
-  sat: {
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attr: "Esri",
-    maxZoom: 19,
-    label: "Vệ tinh",
-  },
-  dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    attr: "&copy; OSM &copy; CARTO",
-    maxZoom: 20,
-    label: "Đêm",
-  },
-  topo: {
-    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-    attr: "&copy; OpenTopoMap",
-    maxZoom: 17,
-    label: "Địa hình",
-  },
-};
 
 export function MapView() {
   const mapEl = useRef<HTMLDivElement>(null);
@@ -48,7 +20,6 @@ export function MapView() {
   const drawn = useRef(0);
   const fittedReplay = useRef<string | null>(null);
   const LRef = useRef<typeof import("leaflet") | null>(null);
-  const tileRef = useRef<import("leaflet").TileLayer | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const lastCoord = useSpeedo((s) => s.lastCoord);
@@ -61,7 +32,6 @@ export function MapView() {
   const replayTrip = useSpeedo((s) => s.replayTrip);
   const replayIndex = useSpeedo((s) => s.replayIndex);
   const cameraAlert = useSpeedo((s) => s.cameraAlert);
-  const mapStyle = useSpeedo((s) => s.mapStyle);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +44,12 @@ export function MapView() {
         attributionControl: false,
       }).setView([HCMC.lat, HCMC.lon], 16);
       L.control.attribution({ position: "bottomleft", prefix: false }).addTo(map);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        subdomains: ["a", "b", "c"],
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
+      }).addTo(map);
       map.on("dragstart", () => useSpeedo.getState().setMapFollow(false));
       mapRef.current = map;
       setMapReady(true);
@@ -83,20 +59,8 @@ export function MapView() {
       setMapReady(false);
       mapRef.current?.remove();
       mapRef.current = null;
-      tileRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    const L = LRef.current;
-    if (!map || !L) return;
-    const spec = TILES[mapStyle];
-    const next = L.tileLayer(spec.url, { maxZoom: spec.maxZoom, attribution: spec.attr });
-    next.addTo(map);
-    if (tileRef.current) map.removeLayer(tileRef.current);
-    tileRef.current = next;
-  }, [mapStyle, mapReady]);
 
   useEffect(() => {
     if (tab === "track" && trackView === "map") {
@@ -295,32 +259,19 @@ export function MapView() {
   return (
     <div className="relative min-h-[240px] flex-1 overflow-hidden rounded-lg border border-border">
       <div ref={mapEl} className="h-full min-h-[240px] w-full bg-bg" />
-      <div className="absolute inset-x-1.5 top-1.5 z-10 rounded-md border border-border bg-bg/90 px-1.5 py-1 text-[10px] backdrop-blur-sm">
-        <div className="mb-1 flex items-center gap-1 font-bold text-muted">
-          <Layers className="size-3" />
-          <span>Chế độ bản đồ</span>
-        </div>
-        <div className="mb-1 flex gap-1">
-          {(Object.keys(TILES) as MapStyle[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => useSpeedo.getState().setMapStyle(id)}
-              className={cn(
-                "flex-1 rounded-sm py-1 text-center text-[9.5px] font-bold",
-                mapStyle === id ? "bg-accent text-fg" : "bg-elevated text-slate-300",
-              )}
-            >
-              {TILES[id].label}
-            </button>
-          ))}
+      <div className="absolute inset-x-1.5 top-1.5 z-10 rounded-md border border-border bg-bg/90 px-2 py-1 text-[10px] backdrop-blur-sm">
+        <div className="mb-0.5 flex items-center justify-between font-bold text-muted">
+          <span>Dải màu tốc độ:</span>
+          <span className="rounded bg-elevated px-1.5 py-px text-[9.5px] text-cyan">
+            OSM · Camera phạt nguội
+          </span>
         </div>
         <div className="flex gap-1">
           <span className="flex-1 rounded-sm bg-ok py-0.5 text-center font-bold text-bg">{"<20"}</span>
           <span className="flex-1 rounded-sm bg-cyan py-0.5 text-center font-bold text-bg">20-40</span>
           <span className="flex-1 rounded-sm bg-warn py-0.5 text-center font-bold text-bg">40-60</span>
           <span className="flex-1 rounded-sm bg-accent py-0.5 text-center font-bold text-bg">60-80</span>
-          <span className="flex-1 rounded-sm bg-danger py-0.5 text-center font-bold text-fg">{">80"}</span>
+          <span className="flex-1 rounded-sm bg-danger py-0.5 text-center font-bold text-fg">{">80 km/h"}</span>
         </div>
       </div>
       {replayTrip && <ReplayBar />}

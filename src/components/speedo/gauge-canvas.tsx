@@ -25,33 +25,24 @@ export function GaugeCanvas() {
       const w = canvas.width;
       const h = canvas.height;
       const cx = w / 2;
-      const cy = h / 2 + 8;
-      const radius = w / 2 - 22;
+      const cy = h / 2;
+      const radius = w / 2 - 18;
       ctx.clearRect(0, 0, w, h);
 
-      const startAngle = 0.72 * Math.PI;
-      const endAngle = 2.28 * Math.PI;
+      const startAngle = 0.75 * Math.PI;
+      const endAngle = 2.25 * Math.PI;
       const totalAngle = endAngle - startAngle;
 
       ctx.beginPath();
-      ctx.arc(cx, cy, radius + 16, 0, Math.PI * 2);
-      const bezel = ctx.createRadialGradient(cx, cy, radius, cx, cy, radius + 18);
-      bezel.addColorStop(0, "#1c2434");
-      bezel.addColorStop(0.7, "#0b0e14");
-      bezel.addColorStop(1, "#2a3348");
-      ctx.fillStyle = bezel;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius + 2, 0, Math.PI * 2);
-      ctx.fillStyle = "#0a0d14";
-      ctx.fill();
-
-      ctx.beginPath();
       ctx.arc(cx, cy, radius, startAngle, endAngle);
-      ctx.lineWidth = 18;
-      ctx.lineCap = "round";
-      ctx.strokeStyle = "#151b28";
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = "#141c2c";
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius - 16, startAngle, endAngle);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.2)";
       ctx.stroke();
 
       const maxScale = gaugeMax(vehicleRef.current);
@@ -60,69 +51,58 @@ export function GaugeCanvas() {
         const frac = s / maxScale;
         const angle = startAngle + frac * totalAngle;
         const isMajor = s % step === 0;
-        const outer = radius - 2;
-        const inner = radius - (isMajor ? 20 : 10);
+        const innerR = radius - (isMajor ? 14 : 7);
         ctx.beginPath();
-        ctx.moveTo(cx + inner * Math.cos(angle), cy + inner * Math.sin(angle));
-        ctx.lineTo(cx + outer * Math.cos(angle), cy + outer * Math.sin(angle));
-        ctx.lineWidth = isMajor ? 3 : 1.4;
-        ctx.strokeStyle = isMajor ? (s >= maxScale * 0.8 ? "#f87171" : "#f8fafc") : "#64748b";
+        ctx.moveTo(cx + innerR * Math.cos(angle), cy + innerR * Math.sin(angle));
+        ctx.lineTo(cx + radius * Math.cos(angle), cy + radius * Math.sin(angle));
+        ctx.lineWidth = isMajor ? 2.5 : 1;
+        ctx.strokeStyle = isMajor ? (s >= maxScale * 0.75 ? "#ef4444" : "#f8fafc") : "#475569";
         ctx.stroke();
         if (isMajor) {
-          const textR = radius - 38;
-          ctx.fillStyle = s >= maxScale * 0.8 ? "#fca5a5" : "#e2e8f0";
-          ctx.font = "700 15px -apple-system, BlinkMacSystemFont, Arial";
+          const textR = radius - 26;
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "bold 12px -apple-system, BlinkMacSystemFont, Arial";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(String(s), cx + textR * Math.cos(angle), cy + textR * Math.sin(angle));
         }
       }
 
-      const speedFrac = Math.min(Math.max(speedKmh, 0) / maxScale, 1);
+      const speedFrac = Math.min(speedKmh / maxScale, 1);
       const activeEnd = startAngle + speedFrac * totalAngle;
       if (speedFrac > 0) {
         ctx.beginPath();
         ctx.arc(cx, cy, radius, startAngle, activeEnd);
-        ctx.lineWidth = 18;
-        ctx.lineCap = "round";
-        const grad = ctx.createLinearGradient(0, h, w, 0);
+        ctx.lineWidth = 14;
+        const grad = ctx.createLinearGradient(0, 0, w, h);
         grad.addColorStop(0, "#22c55e");
-        grad.addColorStop(0.45, "#fbbf24");
+        grad.addColorStop(0.5, "#eab308");
         grad.addColorStop(1, "#ef4444");
         ctx.strokeStyle = grad;
         ctx.stroke();
       }
 
-      const needleLen = radius - 8;
-      const nx = cx + needleLen * Math.cos(activeEnd);
-      const ny = cy + needleLen * Math.sin(activeEnd);
-      const left = activeEnd + Math.PI / 2;
-      const right = activeEnd - Math.PI / 2;
+      const needleLen = radius - 15;
       ctx.beginPath();
-      ctx.moveTo(cx + 7 * Math.cos(left), cy + 7 * Math.sin(left));
-      ctx.lineTo(nx, ny);
-      ctx.lineTo(cx + 7 * Math.cos(right), cy + 7 * Math.sin(right));
-      ctx.closePath();
-      ctx.fillStyle = "#ef4444";
-      ctx.shadowColor = "rgba(239,68,68,0.85)";
-      ctx.shadowBlur = 14;
-      ctx.fill();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + needleLen * Math.cos(activeEnd), cy + needleLen * Math.sin(activeEnd));
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "#ef4444";
+      ctx.shadowColor = "#ef4444";
+      ctx.shadowBlur = 12;
+      ctx.stroke();
       ctx.shadowBlur = 0;
 
       ctx.beginPath();
-      ctx.arc(cx, cy, 11, 0, Math.PI * 2);
-      ctx.fillStyle = "#0b0e14";
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(cx, cy, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#f8fafc";
+      ctx.arc(cx, cy, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = "#ffffff";
       ctx.fill();
     };
 
     const loop = () => {
       if (!oledRef.current) {
-        needleRef.current += (speedRef.current - needleRef.current) * 0.18;
-        if (Math.abs(speedRef.current - needleRef.current) < 0.04) {
+        needleRef.current += (speedRef.current - needleRef.current) * 0.15;
+        if (Math.abs(speedRef.current - needleRef.current) < 0.05) {
           needleRef.current = speedRef.current;
         }
         draw(needleRef.current);
@@ -133,5 +113,13 @@ export function GaugeCanvas() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  return <canvas ref={canvasRef} width={360} height={360} className="size-full" aria-hidden />;
+  return (
+    <canvas
+      ref={canvasRef}
+      width={340}
+      height={340}
+      className="size-[248px]"
+      aria-hidden
+    />
+  );
 }

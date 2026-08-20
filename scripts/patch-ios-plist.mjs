@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const plistPath = "ios/App/App/Info.plist";
 if (!existsSync(plistPath)) {
@@ -35,68 +35,17 @@ upsert(
   "<array>\n      <string>location</string>\n      <string>audio</string>\n    </array>",
 );
 upsert("UIViewControllerBasedStatusBarAppearance", "<false/>");
-upsert("UIStatusBarHidden", "<true/>");
-upsert("UIStatusBarStyle", "<string>UIStatusBarStyleLightContent</string>");
-upsert("UIRequiresFullScreen", "<true/>");
-upsert(
-  "NSCameraUsageDescription",
-  "<string>Ứng dụng cần camera để ghi hình camera hành trình ô tô, overlay tốc độ và tọa độ.</string>",
-);
-upsert(
-  "NSMicrophoneUsageDescription",
-  "<string>Ứng dụng cần micro để ghi âm thanh cùng video camera hành trình.</string>",
-);
-upsert(
-  "NSMotionUsageDescription",
-  "<string>Ứng dụng dùng cảm biến chuyển động để phát hiện tai nạn và gọi khẩn cấp.</string>",
-);
-upsert(
-  "NSPhotoLibraryAddUsageDescription",
-  "<string>Ứng dụng lưu video camera hành trình vào Ảnh.</string>",
-);
-upsert(
-  "NSPhotoLibraryUsageDescription",
-  "<string>Ứng dụng cần quyền Ảnh để lưu video và ảnh thông số hành trình vào thư viện.</string>",
-);
 upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);
 
-const capCfgPath = "ios/App/App/capacitor.config.json";
-if (existsSync(capCfgPath)) {
-  const cfg = JSON.parse(readFileSync(capCfgPath, "utf8"));
-  const list = new Set(cfg.packageClassList || []);
-  list.add("BackgroundGpsPlugin");
-  cfg.packageClassList = [...list];
-  cfg.ios = { ...(cfg.ios || {}), contentInset: "never", preferredContentMode: "mobile" };
-  writeFileSync(capCfgPath, `${JSON.stringify(cfg, null, "\t")}\n`);
-  console.log("[ios-plist] packageClassList", cfg.packageClassList);
-}
-
-const pbx = "ios/App/App.xcodeproj/project.pbxproj";
-if (existsSync(pbx)) {
-  let proj = readFileSync(pbx, "utf8");
-  if (!proj.includes("BackgroundGpsPlugin.swift")) {
-    proj = proj.replace(
-      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };",
-      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };\n\t\tB7A1101D0000000000000002 /* BackgroundGpsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */; };",
-    );
-    proj = proj.replace(
-      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = \"<group>\"; };",
-      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = \"<group>\"; };\n\t\tB7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundGpsPlugin.swift; sourceTree = \"<group>\"; };",
-    );
-    proj = proj.replace(
-      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,\n",
-      "9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,\n\t\t\t\tB7A1101D0000000000000001 /* BackgroundGpsPlugin.swift */,\n",
-    );
-    proj = proj.replace(
-      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,\n",
-      "9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,\n\t\t\t\tB7A1101D0000000000000002 /* BackgroundGpsPlugin.swift in Sources */,\n",
-    );
-    writeFileSync(pbx, proj);
-    console.log("[ios-plist] added BackgroundGpsPlugin.swift to Xcode project");
+const iconSrc = existsSync("public/icon-192.png") ? "public/icon-192.png" : null;
+if (iconSrc) {
+  const destDir = dirname(plistPath);
+  try {
+    copyFileSync(iconSrc, join(destDir, "public", "icon-192.png"));
+  } catch {
+    /* public folder may not exist yet */
   }
 }
-
-spawnSync("python3", ["scripts/sync-ios-icons.py"], { stdio: "inherit" });
 console.log("[ios-plist] patched", plistPath);

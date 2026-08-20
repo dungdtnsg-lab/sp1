@@ -1,7 +1,6 @@
 export type Unit = "kmh" | "mph" | "knot";
-export type TabId = "track" | "satellites" | "chart" | "export" | "safety";
+export type TabId = "track" | "satellites" | "chart" | "export";
 export type TrackView = "stats" | "map";
-export type MapStyle = "osm" | "sat" | "dark" | "topo";
 export type Vehicle = "car" | "bike";
 
 export type GpsLog = {
@@ -60,18 +59,4 @@ export const MAX_SAVED_TRIPS = 15;
 export const LOCAL_TRIPS_KEY = "gpsSpeedometerSavedTripsV1";
 export const SPEED_LIMIT_KEY = "gpsSpeedometerSpeedLimitV1";
 export const VOICE_KEY = "gpsSpeedometerVoiceV1";
-export const MAP_STYLE_KEY = "gpsSpeedometerMapStyleV1";
-export const CRASH_KEY = "gpsSpeedometerCrashV1";
 export const HCMC = { lat: 10.749717, lon: 106.728654 };
-
-export type SafetyScreen = "menu" | "crash" | "dashcam" | "pip";
-
-export type CrashSettings = {
-  enabled: boolean;
-  autoCall: boolean;
-  autoSms: boolean;
-  delaySec: number;
-  tos: boolean;
-  icePhone: string;
-  medical: string;
-};

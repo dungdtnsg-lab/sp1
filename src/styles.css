@@ -31,11 +31,8 @@
 @layer base {
   html,
   body,
-  #root,
   #app {
-    height: 100%;
-    min-height: 100dvh;
-    width: 100%;
+    min-height: 100%;
     background: var(--color-bg);
     color: var(--color-fg);
   }
@@ -58,43 +55,14 @@
 
 @layer utilities {
   .app-shell {
-    padding-top: 0;
+    padding-top: env(safe-area-inset-top, 0px);
     padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     padding-left: env(safe-area-inset-left, 0px);
-    padding-bottom: 0;
-  }
-
-  .island-pad {
-    padding-top: max(8px, env(safe-area-inset-top, 12px));
-  }
-
-  .gauge-face {
-    width: min(240px, 68vw, 30dvh);
-    height: min(240px, 68vw, 30dvh);
-  }
-
-  .gauge-face.is-compact {
-    width: min(148px, 42vw, 18dvh);
-    height: min(148px, 42vw, 18dvh);
   }
 
   .hud-mirror {
     transform: scaleX(-1);
-  }
-
-  .scroll-panel {
-    overflow-y: scroll;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y;
-  }
-
-  .scroll-panel::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  .scroll-panel::-webkit-scrollbar-thumb {
-    background: #64748b;
-    border-radius: 4px;
   }
 }
 

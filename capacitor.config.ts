@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "www",
   backgroundColor: "#080a10",
   ios: {
-    contentInset: "never",
+    contentInset: "automatic",
     preferredContentMode: "mobile",
     scheme: "GPS Speedometer",
   },
