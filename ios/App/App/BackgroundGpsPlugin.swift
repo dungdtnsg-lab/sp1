@@ -40,6 +40,10 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    private var canRunInBackground: Bool {
+        manager.authorizationStatus == .authorizedAlways
+    }
+
     func start() {
         running = true
         startAudio()
@@ -50,6 +54,7 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
         running = false
         manager.stopUpdatingLocation()
         manager.stopUpdatingHeading()
+        manager.stopMonitoringSignificantLocationChanges()
         player?.stop()
         player = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -65,6 +70,7 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
         [
             "running": running,
             "auth": authLabel,
+            "backgroundReady": canRunInBackground,
             "buffered": buffer.count,
             "last": lastPayload,
         ]
@@ -96,6 +102,9 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
         }
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
+        // Recovery path for long iOS suspensions. Standard updates remain the
+        // high-accuracy source while a trip is running.
+        manager.startMonitoringSignificantLocationChanges()
     }
 
     private func startAudio() {
@@ -125,6 +134,7 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
         default:
             break
         }
+        emitAuthorization()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -167,6 +177,13 @@ final class LocationKeeper: NSObject, CLLocationManagerDelegate {
 
     private func emitError(_ message: String) {
         plugin?.notifyListeners("error", data: ["message": message])
+    }
+
+    private func emitAuthorization() {
+        plugin?.notifyListeners("authorization", data: [
+            "auth": authLabel,
+            "backgroundReady": canRunInBackground,
+        ])
     }
 
     private static func quietToneWav() -> Data {
@@ -212,6 +229,7 @@ public class BackgroundGpsPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "stop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "drain", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "status", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
     ]
 
     override public func load() {
@@ -223,7 +241,11 @@ public class BackgroundGpsPlugin: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async {
             LocationKeeper.shared.plugin = self
             LocationKeeper.shared.start()
-            call.resolve(["ok": true, "auth": LocationKeeper.shared.authLabel])
+            call.resolve([
+                "ok": true,
+                "auth": LocationKeeper.shared.authLabel,
+                "backgroundReady": LocationKeeper.shared.authLabel == "always",
+            ])
         }
     }
 
@@ -243,6 +265,18 @@ public class BackgroundGpsPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func status(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             call.resolve(LocationKeeper.shared.status())
+        }
+    }
+
+    @objc func openSettings(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            guard let url = URL(string: UIApplication.openSettingsURLString) else {
+                call.reject("Không thể mở Cài đặt.")
+                return
+            }
+            UIApplication.shared.open(url, options: [:]) { opened in
+                opened ? call.resolve() : call.reject("Không thể mở Cài đặt.")
+            }
         }
     }
 }
