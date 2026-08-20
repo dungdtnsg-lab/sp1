@@ -22,6 +22,7 @@ let silent: HTMLAudioElement | null = null;
 let demoState = { lat: HCMC.lat, lon: HCMC.lon, heading: 28, speed: 32 };
 let lastCameraSpoken = "";
 let lastCameraAt = 0;
+let askedForBackgroundPermission = false;
 
 export async function requestWakeLock() {
   if (!("wakeLock" in navigator)) {
@@ -228,12 +229,7 @@ async function pingNativeGps() {
   try {
     const { BackgroundGps } = await import("./background-gps");
     const st = await BackgroundGps.status();
-    if (st.auth === "whenInUse") {
-      useSpeedo.getState().setBanner(
-        "warn",
-        "GPS nền: Cài đặt → GPS Speedometer → Vị trí → Luôn luôn",
-      );
-    }
+    reportBackgroundPermission(st.auth, st.backgroundReady ?? st.auth === "always", false);
     if (!st.running) await BackgroundGps.start();
     await drainNativeBuffer();
   } catch {
@@ -241,26 +237,45 @@ async function pingNativeGps() {
   }
 }
 
+function reportBackgroundPermission(auth: string | undefined, ready: boolean, promptForSettings: boolean) {
+  if (ready || auth === "always") {
+    askedForBackgroundPermission = false;
+    useSpeedo.getState().setBanner("good", "GPS nền đã bật — tắt màn vẫn ghi hành trình");
+    return;
+  }
+  useSpeedo.getState().setBanner(
+    "warn",
+    "Cần quyền Vị trí “Luôn luôn” để GPS tiếp tục chạy khi tắt màn hình.",
+  );
+  if (!promptForSettings || askedForBackgroundPermission || document.visibilityState !== "visible") return;
+  askedForBackgroundPermission = true;
+  if (
+    window.confirm(
+      "Để GPS vẫn ghi hành trình khi tắt màn hình, hãy chọn Vị trí → Luôn luôn trong Cài đặt. Mở Cài đặt ngay?",
+    )
+  ) {
+    void import("./background-gps")
+      .then(({ BackgroundGps }) => BackgroundGps.openSettings())
+      .catch(() => undefined);
+  }
+}
+
 async function startBackgroundGps(): Promise<boolean> {
   const { BackgroundGps } = await import("./background-gps");
-  const res = await BackgroundGps.start();
   if (bgHandles.length === 0) {
     const fixHandle = await BackgroundGps.addListener("fix", (pos) => ingestFix(pos));
     const errHandle = await BackgroundGps.addListener("error", (err) => {
       onError(new Error(err.message));
     });
-    bgHandles = [fixHandle, errHandle];
+    const authHandle = await BackgroundGps.addListener("authorization", (state) => {
+      reportBackgroundPermission(state.auth, state.backgroundReady, true);
+    });
+    bgHandles = [fixHandle, errHandle, authHandle];
   }
   usingBgGps = true;
   lastGpsAt = Date.now();
-  if (res.auth === "whenInUse") {
-    useSpeedo.getState().setBanner(
-      "warn",
-      "GPS nền: Cài đặt → GPS Speedometer → Vị trí → Luôn luôn",
-    );
-  } else {
-    useSpeedo.getState().setBanner("good", "GPS nền đã bật — tắt màn vẫn ghi hành trình");
-  }
+  const res = await BackgroundGps.start();
+  reportBackgroundPermission(res.auth, res.backgroundReady ?? res.auth === "always", res.auth !== "prompt");
   return true;
 }
 
