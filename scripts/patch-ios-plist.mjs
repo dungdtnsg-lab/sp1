@@ -62,17 +62,6 @@ upsert("CFBundleDisplayName", "<string>GPS Speedometer</string>");
 
 writeFileSync(plistPath, xml);
 
-const capCfgPath = "ios/App/App/capacitor.config.json";
-if (existsSync(capCfgPath)) {
-  const cfg = JSON.parse(readFileSync(capCfgPath, "utf8"));
-  const list = new Set(cfg.packageClassList || []);
-  list.add("BackgroundGpsPlugin");
-  cfg.packageClassList = [...list];
-  cfg.ios = { ...(cfg.ios || {}), contentInset: "never", preferredContentMode: "mobile" };
-  writeFileSync(capCfgPath, `${JSON.stringify(cfg, null, "\t")}\n`);
-  console.log("[ios-plist] packageClassList", cfg.packageClassList);
-}
-
 const pbx = "ios/App/App.xcodeproj/project.pbxproj";
 if (existsSync(pbx)) {
   let proj = readFileSync(pbx, "utf8");
