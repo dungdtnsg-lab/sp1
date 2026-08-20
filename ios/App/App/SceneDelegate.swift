@@ -5,7 +5,7 @@ import Capacitor
 // this, JavaScript silently falls back to browser GPS and tracking stops once
 // iOS locks the screen.
 final class GPSBridgeViewController: CAPBridgeViewController {
-    override open func capacitorDidLoad() {
+    override public func capacitorDidLoad() {
         bridge?.registerPluginInstance(BackgroundGpsPlugin())
         bridge?.registerPluginInstance(DashcamNativePlugin())
     }
