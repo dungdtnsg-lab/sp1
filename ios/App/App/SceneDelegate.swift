@@ -7,6 +7,7 @@ import Capacitor
 final class GPSBridgeViewController: CAPBridgeViewController {
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(BackgroundGpsPlugin())
+        bridge?.registerPluginInstance(DashcamNativePlugin())
     }
 }
 
