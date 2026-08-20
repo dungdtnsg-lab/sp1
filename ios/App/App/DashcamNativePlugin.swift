@@ -136,9 +136,7 @@ final class DualDashcamRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferD
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixel = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         if output === frontOutput {
-            if let old = latestFrontBuffer { CVPixelBufferRelease(old) }
             latestFrontBuffer = pixel
-            CVPixelBufferRetain(pixel)
             return
         }
         guard output === rearOutput, let adaptor, let input else { return }
@@ -204,7 +202,6 @@ final class DualDashcamRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferD
         session = nil
         frontOutput = nil
         rearOutput = nil
-        if let old = latestFrontBuffer { CVPixelBufferRelease(old) }
         latestFrontBuffer = nil
     }
 
