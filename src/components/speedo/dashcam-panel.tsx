@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { History, SwitchCamera, Video, X } from "lucide-react";
-import { persistClip, pickRecorderMime, shareExisting, snapshotHud, type SavedClip } from "@/lib/speedo/dashcam-save";
+import {
+  persistClip,
+  pickRecorderMime,
+  shareExisting,
+  snapshotHud,
+  startHudRecorder,
+  type SavedClip,
+} from "@/lib/speedo/dashcam-save";
 import { attachVideo, facingOf, openCam } from "@/lib/speedo/camera";
+import { DashcamNative } from "@/lib/speedo/dashcam-native";
 import { formatClock, unitLabel, convertSpeed } from "@/lib/speedo/helpers";
 import { useSpeedo } from "@/lib/speedo/store";
 import { cn } from "@/lib/utils";
@@ -21,6 +30,9 @@ export function DashcamPanel() {
   const rearStream = useRef<MediaStream | null>(null);
   const frontStream = useRef<MediaStream | null>(null);
   const recorders = useRef<MediaRecorder[]>([]);
+  const hudRecorders = useRef<Array<{ stop: () => void }>>([]);
+  const nativeDual = useRef(false);
+  const nativeHudTimer = useRef<number | null>(null);
   const chunks = useRef<Record<string, Blob[]>>({ rear: [], front: [] });
   const [mode, setMode] = useState<CamMode>("rear");
   const [res, setRes] = useState<Res>(720);
@@ -93,13 +105,46 @@ export function DashcamPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, res]);
 
-  useEffect(() => () => stopStreams(), []);
+  useEffect(
+    () => () => {
+      stopStreams();
+      stopNativeHudUpdates();
+      if (nativeDual.current) void DashcamNative.stop().catch(() => undefined);
+    },
+    [],
+  );
 
   function stopStreams() {
     rearStream.current?.getTracks().forEach((t) => t.stop());
     frontStream.current?.getTracks().forEach((t) => t.stop());
     rearStream.current = null;
     frontStream.current = null;
+  }
+
+  function hudText() {
+    const latest = useSpeedo.getState();
+    const loc = latest.lastFix
+      ? `${latest.lastFix.lat.toFixed(6)}  ${latest.lastFix.lon.toFixed(6)}`
+      : "—  —";
+    return [
+      new Date().toLocaleString("vi-VN"),
+      `SPEED  ${convertSpeed(latest.currentSpeedKmh, latest.unit).toFixed(0)} ${unitLabel(latest.unit).toUpperCase()}`,
+      loc,
+      "CAM SAU + CAM TRƯỚC",
+    ].join("\n");
+  }
+
+  function stopNativeHudUpdates() {
+    if (nativeHudTimer.current != null) window.clearInterval(nativeHudTimer.current);
+    nativeHudTimer.current = null;
+  }
+
+  async function startNativeDual() {
+    await DashcamNative.startDual({ width: RES[res].w, height: RES[res].h, hud: hudText() });
+    nativeDual.current = true;
+    nativeHudTimer.current = window.setInterval(() => {
+      void DashcamNative.updateHud({ text: hudText() }).catch(() => undefined);
+    }, 1000);
   }
 
   async function startRec() {
@@ -115,11 +160,28 @@ export function DashcamPanel() {
       setErr("Chưa có camera.");
       return;
     }
+    if (mode === "dual" && Capacitor.isNativePlatform()) {
+      stopStreams();
+      try {
+        await startNativeDual();
+        setRecording(true);
+        setErr("Đang ghi đồng thời cam sau + cam trước, HUD sẽ được lưu trực tiếp vào Ảnh.");
+        return;
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Không khởi động được quay kép native.");
+        setMode("rear");
+        return;
+      }
+    }
     chunks.current = { rear: [], front: [] };
     recorders.current = [];
+    hudRecorders.current = [];
     try {
       for (const job of jobs) {
-        const recStream = job.stream;
+        const hudRecorder = job.video
+          ? startHudRecorder(job.video, RES[res].w, RES[res].h, job.stream.getAudioTracks())
+          : null;
+        const recStream = hudRecorder?.stream ?? job.stream;
         const rec = mime
           ? new MediaRecorder(recStream, { mimeType: mime, videoBitsPerSecond: res >= 1080 ? 8_000_000 : 4_000_000 })
           : new MediaRecorder(recStream);
@@ -128,6 +190,7 @@ export function DashcamPanel() {
         };
         rec.start(400);
         recorders.current.push(rec);
+        if (hudRecorder) hudRecorders.current.push(hudRecorder);
       }
       setRecording(true);
       setErr("");
@@ -137,6 +200,19 @@ export function DashcamPanel() {
   }
 
   async function stopRec() {
+    if (nativeDual.current) {
+      try {
+        await DashcamNative.stop();
+        setErr("Đã lưu video HUD hai camera vào thư viện Ảnh.");
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Không thể lưu video hai camera.");
+      } finally {
+        nativeDual.current = false;
+        stopNativeHudUpdates();
+        setRecording(false);
+      }
+      return;
+    }
     const recs = recorders.current;
     recorders.current = [];
     await Promise.all(
@@ -152,6 +228,8 @@ export function DashcamPanel() {
           }),
       ),
     );
+    hudRecorders.current.forEach((recorder) => recorder.stop());
+    hudRecorders.current = [];
     setRecording(false);
     const stampId = Date.now();
     const next: SavedClip[] = [];
@@ -265,6 +343,11 @@ export function DashcamPanel() {
           <div className="font-bold text-cyan">{liveCam || (mode === "front" ? "Cam trước" : "Cam sau")}</div>
           {recording && <div className="mt-1 font-bold text-danger">● REC {res}p</div>}
         </div>
+        {recording && nativeDual.current && (
+          <div className="absolute inset-0 grid place-items-center bg-black/75 px-8 text-center text-[14px] font-bold text-white">
+            Đang ghi đồng thời camera trước + sau bằng camera native\nHUD được ghép vào video khi lưu.
+          </div>
+        )}
         {err && (
           <div
             className={cn(
