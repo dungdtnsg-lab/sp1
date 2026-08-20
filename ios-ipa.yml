@@ -6,6 +6,9 @@ name: "2. Build IPA"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/background-gps-lock-screen
 
 jobs:
   ipa:
