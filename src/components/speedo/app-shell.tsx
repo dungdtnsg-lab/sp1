@@ -442,12 +442,15 @@ function TrackTab() {
           label="Bản đồ"
         />
       </div>
-      <div className={view === "stats" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-        <StatsView duration={duration} stopDur={stopDur} />
-      </div>
-      <div className={view === "map" ? "flex min-h-0 flex-1 flex-col" : "hidden"}>
-        <MapView />
-      </div>
+      {view === "map" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <MapView />
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <StatsView duration={duration} stopDur={stopDur} />
+        </div>
+      )}
     </section>
   );
 }

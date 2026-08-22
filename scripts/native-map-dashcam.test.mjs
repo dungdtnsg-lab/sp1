@@ -10,6 +10,8 @@ test("Track chỉ mount một Leaflet map và tự đồng bộ kích thước",
     read("src/components/speedo/map-view.tsx"),
   ]);
   assert.equal(shell.match(/<MapView\s*\/>/g)?.length, 1);
+  assert.match(shell, /\{view === "map" \? \(/);
+  assert.match(shell, /<StatsView duration=\{duration\} stopDur=\{stopDur\} \/>/);
   assert.match(map, /new ResizeObserver\(syncSize\)/);
   assert.match(map, /map\.invalidateSize\(\{ pan: false, debounceMoveend: true \}\)/);
   assert.match(map, /relative z-0 h-full/);
