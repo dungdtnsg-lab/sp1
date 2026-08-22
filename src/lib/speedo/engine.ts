@@ -6,6 +6,8 @@ import { maybeSpeakSpeed, playOverspeedVoice, resetVoice, speakCamera, unlockVoi
 
 let watchId: number | null = null;
 let nativeWatchId: string | null = null;
+type WatchSource = "native" | "browser" | "demo" | null;
+let watchSource: WatchSource = null;
 let demoTimer: number | null = null;
 let watchdog: number | null = null;
 let lastGpsAt = 0;
@@ -153,25 +155,36 @@ function onError(err: GeolocationPositionError | Error) {
 }
 
 function clearWatcher() {
-  if (watchId != null) {
-    navigator.geolocation?.clearWatch(watchId);
-    watchId = null;
+  const browserId = watchId;
+  watchId = null;
+  if (browserId != null && Number.isInteger(browserId) && browserId >= 0) {
+    try {
+      navigator.geolocation?.clearWatch(browserId);
+    } catch {
+      /* ignore an already-cleared browser watcher */
+    }
   }
-  if (nativeWatchId != null) {
+
+  // Capture the native ID before clearing the shared variable. The Capacitor
+  // clearWatch call is asynchronous; reading nativeWatchId inside the async
+  // callback after setting it to null sends an invalid `{ id: null }` to iOS.
+  const nativeId = nativeWatchId;
+  nativeWatchId = null;
+  if (typeof nativeId === "string" && nativeId.length > 0) {
     void (async () => {
       try {
         const { Geolocation } = await import("@capacitor/geolocation");
-        await Geolocation.clearWatch({ id: nativeWatchId! });
+        await Geolocation.clearWatch({ id: nativeId });
       } catch {
-        /* ignore */
+        /* ignore an already-cleared native watcher */
       }
     })();
-    nativeWatchId = null;
   }
   if (demoTimer != null) {
     window.clearInterval(demoTimer);
     demoTimer = null;
   }
+  watchSource = null;
 }
 
 async function startNativeGps(): Promise<boolean> {
@@ -201,6 +214,7 @@ async function startNativeGps(): Promise<boolean> {
         } as GeolocationPosition);
       },
     );
+    watchSource = "native";
     lastGpsAt = Date.now();
     return true;
   } catch {
@@ -209,6 +223,7 @@ async function startNativeGps(): Promise<boolean> {
 }
 
 function startDemoLoop() {
+  watchSource = "demo";
   demoTimer = window.setInterval(() => {
     if (!useSpeedo.getState().tracking) return;
     demoState.heading = (demoState.heading + (Math.random() * 8 - 3) + 360) % 360;
@@ -236,6 +251,7 @@ function startBrowserGps() {
     maximumAge: 0,
     timeout: 10000,
   });
+  watchSource = "browser";
   lastGpsAt = Date.now();
 }
 
@@ -244,7 +260,7 @@ function startWatchdog() {
   watchdog = window.setInterval(() => {
     const s = useSpeedo.getState();
     if (!s.tracking || s.demo) return;
-    if (lastGpsAt && Date.now() - lastGpsAt > 8000) restartWatcher();
+    if (lastGpsAt && Date.now() - lastGpsAt > 8000) void restartWatcher();
   }, 5000);
 }
 
@@ -255,12 +271,22 @@ function stopWatchdog() {
   }
 }
 
-function restartWatcher() {
+async function restartWatcher() {
   if (!useSpeedo.getState().tracking || restarting) return;
   restarting = true;
+  const source = watchSource;
   clearWatcher();
   try {
-    startBrowserGps();
+    if (source === "native") {
+      // Keep native builds on Capacitor's watcher. Falling back to the browser
+      // watcher here can leave two watcher implementations active at once.
+      const native = await startNativeGps();
+      if (!native && useSpeedo.getState().tracking) startBrowserGps();
+    } else if (source === "demo") {
+      startDemoLoop();
+    } else {
+      startBrowserGps();
+    }
   } catch (err) {
     onError(err instanceof Error ? err : new Error("GPS restart failed"));
   } finally {
@@ -323,7 +349,7 @@ export function bindVisibility() {
     if (document.visibilityState === "visible" && useSpeedo.getState().tracking) {
       void requestWakeLock();
       if (!useSpeedo.getState().demo && lastGpsAt && Date.now() - lastGpsAt > 7000) {
-        restartWatcher();
+        void restartWatcher();
       }
     }
   };

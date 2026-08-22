@@ -6,6 +6,20 @@ name: "2. Build IPA"
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/ios-ipa.yml"
+      - "capacitor.config.ts"
+      - "index.native.html"
+      - "ios/**"
+      - "package.json"
+      - "package-lock.json"
+      - "public/**"
+      - "scripts/**"
+      - "src/**"
+      - "vite.native.config.ts"
 
 jobs:
   ipa:
@@ -65,6 +79,7 @@ jobs:
           echo "=================================================="
           npm run build:ios
           npx cap sync ios
+          python3 scripts/sync-ios-icons.py
           node scripts/patch-ios-plist.mjs
           test -d ios/App
 
